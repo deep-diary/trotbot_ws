@@ -1,0 +1,55 @@
+# TrotBot Champ Teleop Configuration
+# Configurable joystick mappings for champ_teleop with pose control
+# Compatible with gamepad_controller.yaml button/axis assignments
+
+champ_teleop:
+  ros__parameters:
+    # Basic movement parameters (matches gamepad_controller.yaml slow mode)
+    speed: 0.20              # Linear speed - slow mode for safety
+    turn: 1.0                # Angular speed - conservative turning
+    
+    # Joystick button mappings (matches gamepad_controller.yaml)
+    joystick:
+      deadman_button: 3      # Y button (Nintendo Pro) / Triangle (PS) / Y (Xbox) - must be held for all control
+      strafe_button: 4       # L1/LB button - enables strafing mode (sideways movement)
+      pose_button: 5         # R1/RB button - enables yaw control when held
+      reset_button: 0        # B button (Nintendo Pro) / B (Xbox) / Circle (PS) - reset to neutral pose
+      
+      # Axis mappings (matches gamepad_controller.yaml)
+      linear_axis: 1         # Left stick Y - forward/backward movement
+      angular_axis: 0        # Left stick X - turning/strafing
+      roll_axis: 3           # Right stick X - body roll adjustment
+      pitch_axis: 4          # Right stick Y - body pitch adjustment
+      height_axis: 5         # Right trigger (L2/LT) - body height adjustment
+      
+      # Pose control scaling factors (proven values from original champ_teleop)
+      roll_scale: 0.349066   # ±20° roll range (±0.349 radians)
+      pitch_scale: 0.174533  # ±10° pitch range (±0.174 radians)
+      yaw_scale: 0.436332    # ±25° yaw range (±0.436 radians)
+      height_scale: 0.5      # 0.5m height adjustment range
+
+      # Deadband parameters to prevent small joystick drift from triggering pose changes
+      axis_deadband: 0.05      # Ignore joystick movements smaller than 5%
+
+# Alternative fast mode configuration (uncomment to use)
+# champ_teleop:
+#   ros__parameters:
+#     # Fast movement parameters (matches gamepad_controller.yaml fast mode)
+#     speed: 0.3             # Higher linear speed for normal operation
+#     turn: 2.0              # Faster turning for normal operation
+#     
+#     # Same joystick mappings as above
+#     joystick:
+#       deadman_button: 3
+#       strafe_button: 4
+#       pose_button: 5
+#       reset_button: 0
+#       linear_axis: 1
+#       angular_axis: 0
+#       roll_axis: 3
+#       pitch_axis: 4
+#       height_axis: 5
+#       roll_scale: 0.349066
+#       pitch_scale: 0.174533
+#       yaw_scale: 0.436332
+#       height_scale: 0.5

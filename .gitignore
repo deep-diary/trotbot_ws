@@ -1,0 +1,53 @@
+# ROS 2 / colcon
+build/
+install/
+log/
+.colcon_cd_marker
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+env/
+
+# C/C++ build artifacts (if built in-tree)
+*.o
+*.a
+*.dylib
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ROS / data
+*.bag
+*.mcap
+*.orig
+
+# Logs and temp
+*.log
+*.tmp
+*.temp
+
+# CMake (user-generated, not tracked)
+CMakeUserPresets.json

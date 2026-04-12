@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>trotbot</name>
+  <version>1.0.0</version>
+  <description>TrotBot Quadruped Robot Package</description>
+  <maintainer email="your-email@domain.com">TrotBot Team</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- Core ROS 2 dependencies -->
+  <depend>rclpy</depend>
+  <depend>sensor_msgs</depend>
+  <depend>trajectory_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <!-- Robot description dependencies -->
+  <depend>urdf</depend>
+  <depend>xacro</depend>
+  <depend>robot_state_publisher</depend>
+  <depend>joint_state_publisher</depend>
+
+  <!-- Champ controller dependencies -->
+  <depend>champ_base</depend>
+  <depend>champ_msgs</depend>
+
+  <!-- Launch and visualization -->
+  <depend>launch</depend>
+  <depend>launch_ros</depend>
+  <depend>rviz2</depend>
+
+  <!-- Simulation dependencies (optional) -->
+  <depend>gazebo_ros</depend>
+  <depend>gazebo_ros_pkgs</depend>
+
+  <!-- Python dependencies -->
+  <depend>python3-numpy</depend>
+  <depend>python3-scipy</depend>
+
+  <!-- Test dependencies -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <!-- Build dependencies -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

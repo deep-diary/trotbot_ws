@@ -1,0 +1,70 @@
+---
+# TrotBot Gamepad Controller Configuration
+# Compatible with various Bluetooth gamepads including Nintendo Pro Controller, Xbox, PS4/PS5
+# Configured to work with both joy_teleop and champ_teleop joy_callback
+#
+# CONTROLLER MAPPING (Nintendo Pro Controller / Xbox / PlayStation):
+# - Left Stick X (axis 0): Angular velocity (turning left/right)
+# - Left Stick Y (axis 1): Linear velocity (forward/backward)
+# - Right Stick X (axis 3): Body roll adjustment
+# - Right Stick Y (axis 4): Body pitch adjustment
+# - L2/LT (axis 5): Body height adjustment
+# - Y/Triangle/Y Button (button 3): Deadman/safety button
+# - L1/LB (button 4): Strafe mode enable
+# - R1/RB (button 5): Pose control mode
+
+joy_teleop:
+  ros__parameters:
+    # Slow speed mode for precise control and learning
+    slow:
+      type: topic
+      topic_name: cmd_vel
+      interface_type: geometry_msgs/msg/Twist
+      deadman_buttons: [3]   # Y button - must be held for movement
+      axis_mappings:
+        # Left stick horizontal for angular velocity (turning)
+        angular-z:
+          axis: 0    # Left stick left/right (matches champ_teleop mapping)
+          offset: 0.0
+          scale: 1.0   # Conservative turning speed for TrotBot
+        # Left stick vertical for linear velocity (forward/backward)
+        linear-x:
+          axis: 1    # Left stick up/down (matches champ_teleop mapping)
+          offset: 0.0
+          scale: 0.15  # Slow walking speed for TrotBot (0.15 m/s)
+
+    # Fast speed mode for normal operation
+    fast:
+      type: topic
+      topic_name: cmd_vel
+      interface_type: geometry_msgs/msg/Twist
+      deadman_buttons: [3]   # Same Y button for consistency
+      axis_mappings:
+        # Left stick horizontal for angular velocity (turning)
+        angular-z:
+          axis: 0    # Matches champ_teleop joy_callback axis mapping
+          offset: 0.0
+          scale: 2.0   # Faster turning for normal operation
+        # Left stick vertical for linear velocity (forward/backward)
+        linear-x:
+          axis: 1    # Matches champ_teleop joy_callback axis mapping
+          offset: 0.0
+          scale: 0.3   # Normal walking speed for TrotBot (0.3 m/s)
+
+    # Body pose control using right stick (optional - can be enabled later)
+    # This would integrate with the existing joy_callback pose control
+    # pose_control:
+    #   type: topic
+    #   topic_name: body_pose
+    #   interface_type: geometry_msgs/msg/Pose
+    #   deadman_buttons: [1]   # B button for pose control
+    #   axis_mappings:
+    #     # Right stick for body pitch/roll adjustments
+    #     pitch:
+    #       axis: 4    # Right stick up/down
+    #       offset: 0.0
+    #       scale: 0.2
+    #     roll:
+    #       axis: 3    # Right stick left/right  
+    #       offset: 0.0
+    #       scale: 0.2

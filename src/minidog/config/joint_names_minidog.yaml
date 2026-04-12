@@ -1,0 +1,1 @@
+controller_joint_names: ['', 'lf_hip_joint', 'lf_thigh_joint', 'lf_calf_joint', 'rf_hip_joint', 'rf_thigh_joint', 'rf_calf_joint', 'lr_hip_joint', 'lr_thigh_joint', 'lr_calf_joint', 'rr_hip_joint', 'rr_thigh_joint', 'rr_calf_joint', ]
