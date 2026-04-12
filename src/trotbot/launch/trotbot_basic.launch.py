@@ -23,6 +23,7 @@
 #   # 同时打开 RViz（需 DISPLAY；加载 share/trotbot/rviz/trotbot.rviz；RobotModel 用 /robot_description 话题）：
 #   ros2 launch trotbot trotbot_basic.launch.py use_servo_interface:=false rviz:=true
 #   ros2 launch trotbot trotbot_basic.launch.py use_servo_interface:=false rviz:=true rviz_config:=/path/to/custom.rviz
+#   ros2 launch trotbot trotbot_basic.launch.py use_servo_interface:=false rviz:=true description_file:=minidog_champ.urdf.xacro gait_config_file:=gait_minidog.yaml
 #   ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.1}}" --once
 
 from launch import LaunchDescription
@@ -31,6 +32,7 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -76,8 +78,22 @@ def generate_launch_description():
         description="传给 rviz2 -d 的配置文件路径（默认本包 rviz/trotbot.rviz）",
     )
 
+    description_file = LaunchConfiguration("description_file")
+    description_file_launch_arg = DeclareLaunchArgument(
+        name="description_file",
+        default_value="trotbot.urdf.xacro",
+        description="URDF/xacro 文件名，位于 share/trotbot/urdf/，与 champ 控制器共用（如 minidog_champ.urdf.xacro）",
+    )
+
+    gait_config_file = LaunchConfiguration("gait_config_file")
+    gait_config_file_launch_arg = DeclareLaunchArgument(
+        name="gait_config_file",
+        default_value="gait.yaml",
+        description="Champ 步态 yaml 文件名，位于 share/trotbot/config/champ/（Minidog 建议 gait_minidog.yaml）",
+    )
+
     description_path = PathJoinSubstitution(
-        [trotbot_package, "urdf", "trotbot.urdf.xacro"]
+        [trotbot_package, "urdf", description_file]
     )
 
     robot_state_publisher_node = Node(
@@ -87,7 +103,10 @@ def generate_launch_description():
         output="screen",
         parameters=[
             {
-                "robot_description": Command(["xacro ", description_path]),
+                "robot_description": ParameterValue(
+                    Command(["xacro ", description_path]),
+                    value_type=str,
+                ),
                 "use_sim_time": use_sim_time,
             }
         ],
@@ -112,7 +131,9 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(champ_controllers_launch_path),
         launch_arguments={
             "use_sim_time": use_sim_time,
-            "has_imu": has_imu
+            "has_imu": has_imu,
+            "description_file": description_file,
+            "gait_config_file": gait_config_file,
         }.items(),
     )
 
@@ -132,6 +153,8 @@ def generate_launch_description():
         use_servo_interface_launch_arg,
         rviz_launch_arg,
         rviz_config_launch_arg,
+        description_file_launch_arg,
+        gait_config_file_launch_arg,
 
         # Core TrotBot functionality
         champ_controllers_launch,    # Champ quadruped controller + state estimator

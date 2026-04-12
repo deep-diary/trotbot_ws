@@ -28,6 +28,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <quadruped_controller.h>
 
+#include <cstring>
+
 champ::PhaseGenerator::Time rosTimeToChampTime(const rclcpp::Time& time)
 {
   return time.nanoseconds() / 1000ul;
@@ -100,7 +102,7 @@ QuadrupedController::QuadrupedController():
 
 void QuadrupedController::controlLoop_()
 {
-    float target_joint_positions[12];
+    float target_joint_positions[12] = {};
     geometry::Transformation target_foot_positions[4];
     bool foot_contacts[4];
 
@@ -108,6 +110,20 @@ void QuadrupedController::controlLoop_()
 
     leg_controller_.velocityCommand(target_foot_positions, req_vel_, rosTimeToChampTime(clock_.now()));
     kinematics_.inverse(target_joint_positions, target_foot_positions);
+
+    bool joints_finite = true;
+    for (size_t i = 0; i < 12; ++i) {
+        if (!std::isfinite(target_joint_positions[i])) {
+            joints_finite = false;
+            break;
+        }
+    }
+    if (joints_finite) {
+        std::memcpy(last_valid_joints_.data(), target_joint_positions, sizeof(target_joint_positions));
+        have_valid_joints_ = true;
+    } else if (have_valid_joints_) {
+        std::memcpy(target_joint_positions, last_valid_joints_.data(), sizeof(target_joint_positions));
+    }
 
     publishFootContacts_(foot_contacts);
     publishJoints_(target_joint_positions);

@@ -38,6 +38,8 @@ class ServoInterface(Node):
         # Hip joints: -30° to +30° (abduction/adduction range) - PHYSICAL HARDWARE LIMIT
         # Thigh joints: 0° to +90° (forward swing range)
         # Calf joints: -90° to 0° (backward swing range)
+        # Minidog 真机：URDF 与 minidog_champ.urdf.xacro 的关节零位/限位不同，需按实物重调
+        # joint_limits_deg，或改为按 JointTrajectory.joint_names 映射后再下发舵机。
         self.joint_limits_deg = {
             'hip': (-30.0, 30.0),
             'thigh': (0.0, 90.0),

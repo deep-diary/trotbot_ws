@@ -50,6 +50,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
 #include <trajectory_msgs/msg/joint_trajectory_point.hpp>
 
+#include <array>
+#include <cmath>
+
 class QuadrupedController: public rclcpp::Node
 {
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_subscription_;
@@ -74,6 +77,10 @@ class QuadrupedController: public rclcpp::Node
     champ::Kinematics kinematics_;
 
     std::vector<std::string> joint_names_;
+
+    /** Last finite IK solution; avoids publishing uninitialized memory when inverse() fails a cycle. */
+    std::array<float, 12> last_valid_joints_{};
+    bool have_valid_joints_{false};
 
     bool publish_foot_contacts_;
     bool publish_joint_states_;
