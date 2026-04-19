@@ -12,7 +12,7 @@ cd /home/cat/trotbot_ws
 只编译 `trotbot` 功能包（改 URDF、launch、meshes 等后常用）：
 
 ```bash
-colcon build --packages-select trotbot --symlink-install
+colcon build --packages-select trotbot trotbot_can_bridge --symlink-install
 ```
 
 编译整个工作空间：
