@@ -52,7 +52,7 @@ bash install/trotbot_can_bridge/share/trotbot_can_bridge/scripts/el05_motor_cans
 | `init` | 依次「写上报间隔参数 0x7026」→「使能」（CMD=3）→「通信类型 24 主动上报开」 |
 | `reset` | 依次「上报关」（同上帧 Byte6=`00`）+ 「失能」（CMD=4，数据全 0） |
 | `all` | `zero` → 短暂停顿 → `init` |
-| `mit` | 发送一轮 MIT 运控帧（CMD=1）。默认：`p=0`、`v=0`、`kp=30`、`kd=1.5`、`tau=0` |
+| `mit` | 发送一轮 MIT 运控帧（CMD=1）。默认：`p=0`、`v=0`、`kp=20`、`kd=1.5`、`tau=0` |
 | `check` | 快速链路自检：逐个电机发送 `set_zero` 并等待反馈帧（CMD=2） |
 | `ping` | 仅打印每个电机将使用的 **接口名**（不发送） |
 
@@ -200,7 +200,7 @@ IFACE=can1 MOTOR_IDS="13" SLEEP_MS=5 \
 
 - `MIT_P=0`（rad）
 - `MIT_V=0`（rad/s）
-- `MIT_KP=30`
+- `MIT_KP=20`
 - `MIT_KD=1.5`
 - `MIT_TAU=0`（Nm，编码到 CAN ID bits 8–23）
 
@@ -215,7 +215,7 @@ IFACE=can1 MOTOR_IDS="13" SLEEP_MS=5 \
 示例：
 
 ```bash
-# 全部 12 电机发送一轮 MIT（默认 p=0,v=0,kp=30,kd=1.5,tau=0）
+# 全部 12 电机发送一轮 MIT（默认 p=0,v=0,kp=20,kd=1.5,tau=0）
 bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh mit
 
 # 仅后腿 can1 发一轮

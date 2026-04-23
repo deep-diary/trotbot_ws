@@ -42,14 +42,17 @@ ip -details link show can1
 ```bash
 sudo cp /boot/firmware/ubuntuEnv.txt /boot/firmware/ubuntuEnv.txt.bak.$(date +%Y%m%d-%H%M%S)
 
-# 关键点1：主 DTB 用 4-v1-display（避免显示链路与运行时 overlays 组合不稳）
-sudo sed -i 's#^fdtfile=.*#fdtfile=rk3588s-lubancat-4-v1-display.dtb#' /boot/firmware/ubuntuEnv.txt
+# 关键点1：主 DTB 保持 4-v1（保底，避免依赖手工生成的 display.dtb）
+sudo sed -i 's#^fdtfile=.*#fdtfile=rk3588s-lubancat-4-v1.dtb#' /boot/firmware/ubuntuEnv.txt
 
 # 关键点2：overlay_prefix 置空，避免把 rk3588-can overlay 错拼成 rk3588s 前缀
 sudo sed -i 's#^overlay_prefix=.*#overlay_prefix=#' /boot/firmware/ubuntuEnv.txt
 
-# 关键点3：先只保留 CAN overlays（显示由 *-display.dtb 承担）
-sudo sed -i 's#^overlays=.*#overlays=rk3588-lubancat-can0-m0-overlay rk3588-lubancat-can2-m0-overlay#' /boot/firmware/ubuntuEnv.txt
+# 关键点3：使用运行时 overlays（显示 + CAN）
+sudo sed -i 's#^overlays=.*#overlays=rk3588s-lubancat-dp0-in-vp1-overlay rk3588s-lubancat-4-hdmi0-overlay rk3588-lubancat-can0-m0-overlay rk3588-lubancat-can2-m0-overlay#' /boot/firmware/ubuntuEnv.txt
+
+# 关键点4：重启前先确认 overlays 文件都存在
+ls -1 /boot/firmware/dtbs/rockchip/overlay | rg -n '^(rk3588s-lubancat-dp0-in-vp1-overlay|rk3588s-lubancat-4-hdmi0-overlay|rk3588-lubancat-can0-m0-overlay|rk3588-lubancat-can2-m0-overlay)\\.dtbo$'
 
 sudo reboot
 ```
