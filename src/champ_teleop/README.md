@@ -15,13 +15,16 @@ optional paramters for Logitech f710:
 
 ## Controlling the robot with Joystick
 
-Left Joystick:
-- Up/Down - Linear Velocity X
-- Left/Right - Angular Velocity Z
-- L1 + Left/Right - Linear Velocity Y
+（PS4 / 键位与 `axes` 下标因驱动而异，**以你机 `ros2 topic echo /joy` 为准**；中文总表见
+`docs/PS4_JOY_MAPPING_zh.md`。）
 
-Right Joystick:
-- Up/Down - Body's Pitch
-- Left/Right - Body's Roll
-- R1 + Left/Right - Body's Yaw
-- R2 + Up/Down - Body's Z (Height) 
+Left stick:
+- Y → `cmd_vel.linear.x`
+- X → strafe or turn: with **L1** (index 4) strafe `linear.y`, else `angular.z`
+
+Right stick:
+- Y → body pitch, X → roll (R1 not held) or yaw (R1 held) per `champ_teleop.py`
+- **R2** (commonly `axes[5] < 0` when pulled) → **continuous** body height down (``joy_height_axis5_scale``; default 0.5)
+- **Face buttons** (default inc=3 / dec=1) → **discrete** height up/down (shared with keyboard t/b)
+
+**R2 "crouch"** is **smooth** (analog), not a one-shot snap, as long as the driver reports a continuous trigger axis. 

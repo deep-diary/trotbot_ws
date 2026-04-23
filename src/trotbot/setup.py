@@ -33,11 +33,6 @@ setup(
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
-        'console_scripts': [
-            'servo_interface = hal.interfaces.servo_interface:main',
-            'calibrate_servos = hal.utils.calibrate_servos:main',
-            'calibrate_tool = hal.utils.calibrate_tool:main',
-            'calibration_status = hal.utils.calibration_status:main',
-        ],
+        'console_scripts': [],
     },
 )

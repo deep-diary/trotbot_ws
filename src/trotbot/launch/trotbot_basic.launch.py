@@ -3,13 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # TrotBot Basic Launch File
-# Minimal launch for core TrotBot functionality: quadruped controller, state estimator, and servo interface
+# Minimal launch for core TrotBot functionality: quadruped controller, state estimator, and CAN bridge
 # This launch file provides the essential components needed for TrotBot operation without teleop interfaces
 #
 # CORE COMPONENTS:
 # - quadruped_controller: Champ-based quadruped walking controller
 # - state_estimator: Robot state estimation and odometry
-# - servo_interface: Hardware abstraction layer for Pi 5 + PCA9685 servo control
+# - can_bridge: MIT-only dual-node CAN bridge
 #
 # CONTROL OPTIONS:
 # - Direct ROS 2 topics: Publish to /cmd_vel for velocity control
@@ -18,12 +18,12 @@
 #
 # USAGE:
 #   ros2 launch trotbot trotbot_basic.launch.py
-#   # 无 PCA9685 / sysfs PWM 时避免刷屏，可关闭舵机节点（仅步态+状态估计+发关节指令到“空”）：
-#   ros2 launch trotbot trotbot_basic.launch.py use_servo_interface:=false
+#   # 启用 MIT-only CAN 双节点桥接：
+#   ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true
 #   # 同时打开 RViz（需 DISPLAY；加载 share/trotbot/rviz/trotbot.rviz；RobotModel 用 /robot_description 话题）：
-#   ros2 launch trotbot trotbot_basic.launch.py use_servo_interface:=false rviz:=true
-#   ros2 launch trotbot trotbot_basic.launch.py use_servo_interface:=false rviz:=true rviz_config:=/path/to/custom.rviz
-#   ros2 launch trotbot trotbot_basic.launch.py use_servo_interface:=false rviz:=true description_file:=minidog_champ.urdf.xacro gait_config_file:=gait_minidog.yaml
+#   ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true rviz:=true
+#   ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true rviz:=true rviz_config:=/path/to/custom.rviz
+#   ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true rviz:=true description_file:=minidog_champ.urdf.xacro gait_config_file:=gait_minidog.yaml
 #   ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.1}}" --once
 
 from launch import LaunchDescription
@@ -54,11 +54,11 @@ def generate_launch_description():
         description="Enable IMU sensor support (default: false for TrotBot)"
     )
 
-    use_servo_interface = LaunchConfiguration("use_servo_interface")
-    use_servo_interface_launch_arg = DeclareLaunchArgument(
-        name="use_servo_interface",
-        default_value="true",
-        description="是否启动 servo_interface（无硬件时请设 false，避免 sysfs PWM 报错刷屏）",
+    use_can_bridge = LaunchConfiguration("use_can_bridge")
+    use_can_bridge_launch_arg = DeclareLaunchArgument(
+        name="use_can_bridge",
+        default_value="false",
+        description="是否启动 MIT-only 双节点 CAN bridge",
     )
 
     rviz = LaunchConfiguration("rviz")
@@ -137,20 +137,19 @@ def generate_launch_description():
         }.items(),
     )
 
-    # Include servo interface launch
-    servo_interface_launch_path = PathJoinSubstitution(
-        [trotbot_package, "launch", "servo_interface.launch.py"]
-    )
-    servo_interface_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(servo_interface_launch_path),
-        condition=IfCondition(use_servo_interface),
+    # Include CAN bridge launch
+    can_bridge_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([FindPackageShare("trotbot_can_bridge"), "launch", "can_bridge.launch.py"])
+        ),
+        condition=IfCondition(use_can_bridge),
     )
 
     return LaunchDescription([
         # Launch arguments
         use_sim_time_launch_arg,
         has_imu_launch_arg,
-        use_servo_interface_launch_arg,
+        use_can_bridge_launch_arg,
         rviz_launch_arg,
         rviz_config_launch_arg,
         description_file_launch_arg,
@@ -158,7 +157,7 @@ def generate_launch_description():
 
         # Core TrotBot functionality
         champ_controllers_launch,    # Champ quadruped controller + state estimator
-        servo_interface_launch,      # TrotBot servo interface (Pi 5 + PCA9685)
+        can_bridge_launch,           # MIT-only dual-node CAN bridge
         robot_state_publisher_node,
         rviz_node,
     ])

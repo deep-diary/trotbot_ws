@@ -1,15 +1,21 @@
 /**:
   ros__parameters:
+    loop_rate: 200.0                 # CHAMP 主控制循环频率（Hz）；200Hz=5ms 周期
     gait:
-      knee_orientation : ">>"
-      pantograph_leg : false
-      odom_scaler: 1.0
-      max_linear_velocity_x : 0.20
-      max_linear_velocity_y : 0.20
-      max_angular_velocity_z : 1.0
-      com_x_translation : 0.0
-      swing_height : 0.028
-      stance_depth : 0.002
-      stance_duration : 0.2
+      knee_orientation : ">>"          # 膝关节弯曲方向/安装朝向标记（字符串枚举，无单位）
+      pantograph_leg : false           # 是否使用平行四边形（pantograph）腿部运动学模型（布尔值，无单位）
+      odom_scaler: 1.0                 # 里程计缩放系数，用于校正里程计估计（比例因子，无量纲）
+      max_linear_velocity_x : 0.20     # 机体在 X 方向最大线速度（m/s）
+      max_linear_velocity_y : 0.20     # 机体在 Y 方向最大线速度（m/s）
+      max_angular_velocity_z : 1.0     # 绕 Z 轴最大角速度（rad/s）
+      com_x_translation : 0.0          # 质心参考点在 X 方向平移补偿（m）
+      swing_height : 0.028             # 摆动相抬脚高度（m）
+      stance_depth : 0.002             # 支撑相压脚/下探深度（m）
+      stance_duration : 0.2            # 单次支撑相持续时间（s）
       # Minidog 腿较长：略高于默认 trotbot 0.12，站姿更舒展（可按实机再调）
-      nominal_height : 0.155
+      # nominal_height（m）：CHAMP 机体基准高度；启动时 quadruped_controller 内部初始目标高度与此一致，
+      # 并与 body_pose.position.z（teleop 微调）相加：z_total = nominal_height + msg.position.z。
+      # 不建议改为 0：会破坏腿长/足端规划比例；趴姿上电若忌「瞬间抬高」，勿靠改此处解决，应：
+      #   - 启动后先用 champ_teleop 的 t/b（或手柄 △/✕）把 body_pose.position.z 从负值逐步调到 0；或
+      #   - 后续可在专用节点里对 body_pose.position.z 做斜坡（时间参数），再接入。
+      nominal_height : 0.2           # 机体名义站立高度（m）

@@ -1,0 +1,8 @@
+# 与 `ros2 run champ_teleop champ_teleop.py --ros-args --params-file 本文件` 使用
+# CUH-ZCT2E 实测：buttons 0=✕ 1=○ 2=△ 3=□ → 升高 △=2，降低 ✕=0
+#
+/champ_teleop:
+  ros__parameters:
+    joy_height_inc_button: 2
+    joy_height_dec_button: 0
+    joy_height_axis5_scale: 0.5

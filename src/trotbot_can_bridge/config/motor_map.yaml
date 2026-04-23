@@ -1,0 +1,5 @@
+/**:
+  ros__parameters:
+    # P1 临时固定映射（索引->ID），后续将替换为 joint_name 精确映射
+    motor_ids_by_index: [11, 12, 13, 21, 22, 23, 51, 52, 53, 61, 62, 63]
+    bus_by_index: [can0, can0, can0, can0, can0, can0, can1, can1, can1, can1, can1, can1]

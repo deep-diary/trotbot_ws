@@ -27,31 +27,6 @@ find_package(std_msgs REQUIRED)
 # Install Python package
 ament_python_install_package(hal)
 
-# Install Python executables
-install(PROGRAMS
-  hal/interfaces/servo_interface.py
-  DESTINATION lib/${PROJECT_NAME}
-  RENAME servo_interface
-)
-
-install(PROGRAMS
-  hal/utils/calibrate_servos.py
-  DESTINATION lib/${PROJECT_NAME}
-  RENAME calibrate_servos
-)
-
-install(PROGRAMS
-  hal/utils/calibrate_tool.py
-  DESTINATION lib/${PROJECT_NAME}
-  RENAME calibrate_tool
-)
-
-install(PROGRAMS
-  hal/utils/calibration_status.py
-  DESTINATION lib/${PROJECT_NAME}
-  RENAME calibration_status
-)
-
 # Install data directories
 install(DIRECTORY
   launch

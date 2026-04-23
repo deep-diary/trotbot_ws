@@ -22,6 +22,7 @@
   <!-- Champ controller dependencies -->
   <depend>champ_base</depend>
   <depend>champ_msgs</depend>
+  <depend>trotbot_can_bridge</depend>
 
   <!-- Launch and visualization -->
   <depend>launch</depend>

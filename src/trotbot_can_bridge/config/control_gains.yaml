@@ -1,0 +1,47 @@
+/**:
+  ros__parameters:
+    kp: 30.0
+    kd: 1.5
+    default_velocity: 0.0
+    default_tau_ff: 0.0
+    enable_rx_decode_log: true
+    prefer_joint_name_mapping: true
+    # 观测：motor_protocol 发布 /mit_motor_position_rad (sensor_msgs/JointState)，position 为 MIT 帧内弧度 θ_mit=sign*θ_champ+offset；name 与 CHAMP 关节名同序。电机 ID 11–63 见 dog_mapper 注释。
+    # publish_mit_mapped_positions: true
+    # mit_mapped_positions_topic: /mit_motor_position_rad
+    # --- 关节方向 / 零位（与 motor_protocol_node 一致）---
+    # joint_signs: 仅 ±1，表示 URDF/CHAMP 正方向与电机指令正方向是否一致（标定得出，勿填 0）。
+    # joint_offsets_rad: θ_mit = joint_signs[i] * θ_champ[i] + joint_offsets_rad[i]
+    #
+    # 若将「趴姿」作为电机 EL05 机械零位（该姿态下电机读数为 0），并希望 CHAMP 仍用 URDF 关节角 θ：
+    #   在**同一趴姿**下录制 /joint_group_effort_controller/joint_trajectory 的 positions[0..11]（记 θ_prone），则
+    #     joint_offsets_rad[i] = - joint_signs[i] * θ_prone[i]
+    #   之后任意指令 θ 时：θ_mit = joint_signs[i] * (θ[i] - θ_prone[i])，即电机侧为「相对趴姿」的角。
+    # **不可**仅用站立姿态一条轨迹推算 θ_prone；站立数据只能用于核对步态，不能代替趴姿采样。
+    # minidog URDF 小腿限位为负区间时，θ=0 往往不在限位内，勿假设「趴姿 = URDF 全 0」。
+    #
+    # 顺序（与 joints.yaml / JointTrajectory）：base_lf1, lf1_lf2, lf2_lf3 | base_rf1, rf1_rf2, rf2_rf3 |
+    #   base_lb1, lb1_lb2, lb2_lb3 | base_rb1, rb1_rb2, rb2_rb3
+    #
+    # 站立参考（仅记录，不代入 offset；来自 CHAMP 实测）：每腿约 hip≈0, thigh≈0.578, calf≈-1.051
+    joint_signs: [-1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0]
+
+    # --- 镜像展开：四腿 hip/thigh/calf 幅值对称，只需改下面 3 个数 ---
+    # expand_joint_offsets_from_mirror=true 时，节点启动后用下面三数重算 joint_offsets_rad（与下列 12 维应一致）。
+    # 生成规则（与 DogMapper LF|RF|LH|RH × [hip,thigh,calf] 一致）：
+    #   LF: +hip, +thigh, -calf_mag | RF: -hip, -thigh, +calf_mag
+    #   LH: -hip, +thigh, -calf_mag | RH: +hip, -thigh, +calf_mag
+    # calf 填**正数**幅值（小腿偏移在 LF/LH 为负，RF/RH 为正）。
+    expand_joint_offsets_from_mirror: true
+    # 基于结构反馈的狗子底部接触地面
+    # joint_offset_hip_rad: 0.17444
+    # joint_offset_thigh_rad: 1.0031
+    # joint_offset_calf_rad: 2.5469
+
+    # 基于结构反馈的狗子髋关节保持水平（须写 0.0，勿写 0，否则 ROS 2 参数类型会变成 integer）
+    joint_offset_hip_rad: 0.0
+    joint_offset_thigh_rad: 1.0031
+    joint_offset_calf_rad: 2.5469
+
+    # 由上行三数按镜像规则展开的 12 维（LF|RF|LH|RH × hip/thigh/calf）；改标定时请同步更新上行三数与本行。
+    joint_offsets_rad: [0.17444, 1.0031, -2.5469, -0.17444, -1.0031, 2.5469, -0.17444, 1.0031, -2.5469, 0.17444, -1.0031, 2.5469]

@@ -1,0 +1,32 @@
+#!/bin/bash
+
+ip link set can0 down
+ip link set can1 down
+ip link set can0 type can bitrate 500000
+ip link set can1 type can bitrate 500000
+ip link set can0 up
+ip link set can1 up
+
+#监控can0数据
+candump can0 >> /home/cat/log.txt &
+
+counter=0
+while true; do
+    #can0发送can0 123#00000000~123#99999999数据
+    data=$(printf "%08d" $counter)
+    command="cansend can0 123#$data"
+    echo $command
+    $command
+
+    #can1发送can0 321#00000000~321#99999999数据
+    command2="cansend can1 321#$data"
+    echo $command2
+    $command2
+
+    if [ $counter -eq 99999999 ]; then
+        counter=0
+    else
+        counter=$((counter+1))
+    fi
+    sleep 0.01
+done

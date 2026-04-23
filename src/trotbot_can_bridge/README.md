@@ -1,0 +1,304 @@
+## 实测报文：
+
+data: RX can1 EXT id=0x0600FD0B len=08 01 01 00 00 00 00 00 00   电机设置零位
+---
+data: RX can1 EXT id=0x02000BFD len=08 7F FF 7F D1 7F FF 01 04   电机反馈报文
+---
+data: RX can1 EXT id=0x0300FD0B len=08 00 00 00 00 00 00 00 00   电机使能
+---
+data: RX can1 EXT id=0x02800BFD len=08 80 00 80 19 7F FF 01 04   电机反馈报文
+---
+data: RX can1 EXT id=0x017FFF0B len=08 8A 3C 7F FF 0F 5C 4C CC      运控报文：扭矩：0，位置：1， 速度：0， kp：30，kd：1.5
+---
+data: RX can1 EXT id=0x02800BFD len=08 7F FF 80 2B 7F F6 01 04      电机反馈报文
+---
+data: RX can1 EXT id=0x0400FD0B len=08 00 00 00 00 00 00 00 00      电机失能
+---
+data: RX can1 EXT id=0x02000BFD len=08 8A 32 80 67 80 DF 01 04      电机反馈报文
+
+---
+
+## `el05_motor_cansend.sh`：12 电机批处理（cansend）
+
+脚本路径：**`scripts/el05_motor_cansend.sh`**（安装后：`share/trotbot_can_bridge/scripts/el05_motor_cansend.sh`，与工作空间 install 前缀有关）。
+
+电机 ID 与腿的对应关系见 **`src/trotbot/hal/ref/dog/README.md`**（11–13 / 21–23 / 51–53 / 61–63）。
+
+CAN ID 组装与仓库内 **`hal/ref/motor/protocol_motor.cpp` 的 `buildCanId`** 一致：**`CMD<<24 | MOTOR_MASTER_ID<<8 | motor_id`**（默认 **`MOTOR_MASTER_ID=0xFD`**，十进制 **`253`**）。
+
+### 依赖
+
+```bash
+sudo apt-get install -y can-utils
+```
+
+总线需已配置波特率并已 `up`（例如 1Mbps）。
+
+### 用法
+
+```bash
+# 源码目录直接跑
+bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh --help
+
+# 编译安装后（路径按你的 prefix 调整）
+bash install/trotbot_can_bridge/share/trotbot_can_bridge/scripts/el05_motor_cansend.sh zero
+```
+
+子命令：
+
+| 子命令 | 说明 |
+|--------|------|
+| `zero` | 12 电机依次「设置零位」（CMD=6，`data` 首字节 `01`） |
+| `init` | 依次「写上报间隔参数 0x7026」→「使能」（CMD=3）→「通信类型 24 主动上报开」 |
+| `reset` | 依次「上报关」（同上帧 Byte6=`00`）+ 「失能」（CMD=4，数据全 0） |
+| `all` | `zero` → 短暂停顿 → `init` |
+| `mit` | 发送一轮 MIT 运控帧（CMD=1）。默认：`p=0`、`v=0`、`kp=30`、`kd=1.5`、`tau=0` |
+| `check` | 快速链路自检：逐个电机发送 `set_zero` 并等待反馈帧（CMD=2） |
+| `ping` | 仅打印每个电机将使用的 **接口名**（不发送） |
+
+### 接口分配（默认）
+
+与当前桥接约定一致：**前腿（11–23）→ `can0`，后腿（51–63）→ `can1`**。可通过环境变量覆盖：
+
+- **`IFACE`**：若设置，则 **本轮所有帧走该接口**（常用于台架共总线）。
+- **`IFACE_FRONT`** / **`IFACE_REAR`**：未设 `IFACE` 时的前、后腿 SocketCAN 名（默认 `can0` / `can1`）。
+- **`BUS=rear`**：**只处理后腿 6 个 ID（51–63）**，且 **只往 `IFACE_REAR`（默认 can1）发**，不会访问 `can0`（适合 can0 未接线、仅在 can1 上测后腿）。
+- **`BUS=front`**：**只处理前腿 6 个 ID**，且 **只往 `IFACE_FRONT` 发**。
+- **`MOTOR_IDS`**：空格分隔自定义列表（如 `13`）；若某 ID 默认映射到未接线的口，请同时设 **`IFACE=can1`**（或相应的 `IFACE_FRONT`/`IFACE_REAR`）指定实际总线。
+- **`SLEEP_MS`**：帧间隔，默认 **20 ms**，减轻 **`write: No buffer space available`**（与其它 CAN 发送并存时）。
+- **`REPORT_HZ`**：`init` 时目标主动上报频率（Hz），默认 **5**（降负载）。
+- **`REPORT_SCAN_TIME`**：直接指定 `EPScan_time`（`0x7026`，uint16），优先于 `REPORT_HZ`。
+- **`CHECK_TIMEOUT_S`**：`check` 子命令等待单电机反馈超时（秒），默认 **0.40**。
+
+### 主动上报频率（`EPScan_time=0x7026`）说明
+
+按手册截图规则：
+
+- `scan_time = 1` 对应约 `10ms`（约 100Hz）
+- 每增加 1，周期增加 `5ms`
+
+脚本 `init` 默认会把频率降到 **5Hz**（约 `200ms`，即 `scan_time=39`），以减轻总线负载。  
+你可以按需覆盖：
+
+```bash
+# 默认（5Hz）
+bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh init
+
+# 改为 20Hz
+REPORT_HZ=20 bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh init
+
+# 直接指定 scan_time=1（约100Hz）
+REPORT_SCAN_TIME=1 bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh init
+```
+
+### 参数组合速查（重点）
+
+```bash
+# 1) 不加任何变量：按默认映射，前腿发 can0、后腿发 can1
+bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh ping
+
+# 2) 只测后腿总线（推荐 can0 未接时）
+BUS=rear bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh ping
+
+# 3) 只测前腿总线
+BUS=front bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh ping
+
+# 4) 单电机（ID13）且强制走 can1（台架常用）
+IFACE=can1 MOTOR_IDS="13" bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh ping
+
+# 5) 自定义多电机（例如后左腿 51 52 53）
+IFACE=can1 MOTOR_IDS="51 52 53" bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh ping
+```
+
+说明：
+
+- `MOTOR_IDS` 一旦设置，会覆盖 `BUS` 的 ID 列表。
+- `IFACE` 一旦设置，会覆盖 `IFACE_FRONT/IFACE_REAR` 与 `BUS` 的接口选择逻辑。
+- 常见安全用法：**先 `ping` 看路由，再执行 `zero/init/reset/mit`**。
+
+### 常见命令示例（zero / init / reset / all）
+
+```bash
+# A. 全 12 电机设置零位（按默认前后腿分口）
+bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh zero
+
+# B. 仅后腿初始化（使能 + 主动上报开），且只访问 can1
+BUS=rear bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh init
+
+# C. 单电机初始化（ID13，走 can1）
+IFACE=can1 MOTOR_IDS="13" bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh init
+
+# D. 单电机复位（上报关 + 失能）
+IFACE=can1 MOTOR_IDS="13" bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh reset
+
+# E. 前腿全流程：zero -> init
+BUS=front bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh all
+
+# F. 初始化时把上报频率设为 5Hz（默认就是 5Hz，写法用于显式说明）
+REPORT_HZ=5 bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh init
+```
+
+### 12 电机通信快速验证（`check`）
+
+用途：快速判断每个电机链路是否通（你提到的“发 set_zero，电机同步返回反馈”场景）。
+
+逻辑：
+
+1. 对每个目标电机发送 `set_zero`（CMD=6）
+2. 在该电机对应总线上等待一帧反馈（CMD=2，带 motor_id 过滤）
+3. 输出 `[OK]/[FAIL]` 与最终统计
+
+示例：
+
+```bash
+# 全 12 电机检查
+bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh check
+
+# 仅后腿 6 电机检查（只看 can1）
+BUS=rear bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh check
+
+# 单电机检查（ID13，强制 can1）
+IFACE=can1 MOTOR_IDS="13" bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh check
+```
+
+判定建议：
+
+- 全部 `[OK]`：链路基本正常
+- 个别 `[FAIL]`：优先检查该电机电源/CANH-CANL/ID 拨码/总线映射
+- 全部 `[FAIL]`：优先检查接口是否 `UP`、波特率、终端电阻、主站 ID
+
+### 主站 ID 与上报 ID 示例（MASTER / MASTER_REPORT）
+
+```bash
+# 所有命令使用主站 0xFD（默认，可省略）
+MASTER=253 bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh init
+
+# 控制帧仍用 MASTER=253，但通信类型24上报帧改用主站 0
+MASTER=253 MASTER_REPORT=0 \
+  bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh init
+```
+
+### 发送节奏示例（SLEEP_MS）
+
+```bash
+# 放慢发送节奏，降低并发时 ENOBUFS 概率
+SLEEP_MS=40 bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh init
+
+# 单电机可适当减小
+IFACE=can1 MOTOR_IDS="13" SLEEP_MS=5 \
+  bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh mit
+```
+
+### MIT 运控报文（`mit` 子命令）
+
+脚本会按协议编码：
+
+- **CAN ID**：`(CMD_CONTROL<<24) | (tau_u16<<8) | motor_id`，其中 `CMD_CONTROL=1`
+- **Data[8]**：`p_u16 | v_u16 | kp_u16 | kd_u16`（均为大端）
+
+默认参数（与你要求一致）：
+
+- `MIT_P=0`（rad）
+- `MIT_V=0`（rad/s）
+- `MIT_KP=30`
+- `MIT_KD=1.5`
+- `MIT_TAU=0`（Nm，编码到 CAN ID bits 8–23）
+
+对应协议裁剪范围（超界会自动 clamp）：
+
+- `p ∈ [-12.57, 12.57]`
+- `v ∈ [-50, 50]`
+- `kp ∈ [0, 500]`
+- `kd ∈ [0, 5]`
+- `tau ∈ [-6, 6]`
+
+示例：
+
+```bash
+# 全部 12 电机发送一轮 MIT（默认 p=0,v=0,kp=30,kd=1.5,tau=0）
+bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh mit
+
+# 仅后腿 can1 发一轮
+BUS=rear bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh mit
+
+# 单电机 ID13：目标位置 0.2rad，kp=10，其余默认
+IFACE=can1 MOTOR_IDS="13" MIT_P=0.2 MIT_KP=10 \
+  bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh mit
+```
+
+验证建议（另一终端）：
+
+```bash
+candump -tz can1
+```
+
+应看到 `id=0x01xxxx0D`（CMD=1，末字节为 motor_id），`data` 为 8 字节 MIT 控制量。
+
+### 主动上报（通信类型 24）
+
+默认对上报帧仍使用 **`MASTER=253`（0xFD）**，即扩展 ID 形如 **`0x1800FDxx`**。若你的手册要求主 CAN 为 **0**，可单独设置：
+
+```bash
+MASTER_REPORT=0 bash scripts/el05_motor_cansend.sh init
+```
+
+### 与其它文档的关系
+
+仓库根目录 **`README.md`** 里「**2b) cansend：电机主动上报**」一节给出的示例 **`0x1800000D`** 对应 **主 CAN_ID=0**；本脚本默认跟随 **`protocol_motor.h` 的 0xFD**。若实机仅一种配置能通，以 **`candump`** 核对后再固定环境变量。
+
+### 开机自动拉起 CAN（systemd）
+
+> 适用于接口已存在但重启后处于 down 的场景。  
+> 若 `ip -br link` 里**没有** `can0/can1`，请先修复设备树/overlay（见下方排查）。
+
+1) 新建服务：
+
+```bash
+sudo tee /etc/systemd/system/can-up.service >/dev/null <<'EOF'
+[Unit]
+Description=Bring up SocketCAN interfaces at boot
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -lc 'for i in can0 can1; do ip link show "$i" >/dev/null 2>&1 || continue; ip link set "$i" down || true; ip link set "$i" type can bitrate 1000000 restart-ms 100; ip link set "$i" up; done'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+2) 启用并立即执行：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now can-up.service
+```
+
+3) 验证：
+
+```bash
+systemctl status can-up.service --no-pager
+ip -br link | grep -E '^can[01]\b'
+ip -details link show can0
+ip -details link show can1
+```
+
+4) 修改波特率（例如 500k）：
+
+- 编辑服务中的 `bitrate 1000000` 为目标值后执行：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart can-up.service
+```
+
+#### 排查：重启后看不到 can0/can1
+
+若 `ip -br link` 完全没有 `can0/can1`，说明不是“没 up”，而是“接口没被创建设备”：
+
+- 先核对 `/boot/firmware/ubuntuEnv.txt` 的 `fdtfile` / `overlays`
+- 再核对系统里是否存在对应 CAN overlay 文件（不同发行版路径可能不同）
+- 仅在接口已出现时，`can-up.service` 才能生效
