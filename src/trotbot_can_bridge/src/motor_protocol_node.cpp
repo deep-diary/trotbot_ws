@@ -109,9 +109,21 @@ public:
       "joint_cmd_min_rad", std::vector<double>(12, -3.14));
     joint_cmd_max_rad_ = this->declare_parameter<std::vector<double>>(
       "joint_cmd_max_rad", std::vector<double>(12, 3.14));
+    use_motor_domain_limits_ = this->declare_parameter<bool>("use_motor_domain_limits", true);
+    derive_motor_limits_from_joint_cmd_ = this->declare_parameter<bool>(
+      "derive_motor_limits_from_joint_cmd", true);
+    joint_mit_min_rad_ = this->declare_parameter<std::vector<double>>(
+      "joint_mit_min_rad", std::vector<double>(12, ProtocolCodec::kPMin));
+    joint_mit_max_rad_ = this->declare_parameter<std::vector<double>>(
+      "joint_mit_max_rad", std::vector<double>(12, ProtocolCodec::kPMax));
     enable_startup_smoothing_ = this->declare_parameter<bool>("enable_startup_smoothing", true);
     startup_smoothing_duration_s_ = this->declare_parameter<double>("startup_smoothing_duration_s", 1.5);
     command_max_velocity_rad_s_ = this->declare_parameter<double>("command_max_velocity_rad_s", 6.0);
+    enable_mode_rising_smoothing_ = this->declare_parameter<bool>("enable_mode_rising_smoothing", true);
+    motor_enabled_mode_status_ = this->declare_parameter<int>("motor_enabled_mode_status", 2);
+    enable_feedback_step_limit_ = this->declare_parameter<bool>("enable_feedback_step_limit", true);
+    feedback_step_limit_rad_ = this->declare_parameter<double>("feedback_step_limit_rad", 0.20);
+    feedback_fresh_timeout_s_ = this->declare_parameter<double>("feedback_fresh_timeout_s", 0.30);
     enable_rx_decode_log_ = this->declare_parameter<bool>("enable_rx_decode_log", true);
     prefer_joint_name_mapping_ = this->declare_parameter<bool>("prefer_joint_name_mapping", true);
     joint_signs_ = this->declare_parameter<std::vector<double>>(
@@ -185,12 +197,21 @@ public:
     boot_feedback_champ_rad_.fill(std::numeric_limits<double>::quiet_NaN());
     boot_feedback_captured_.fill(false);
     has_last_sent_.fill(false);
+    has_mode_status_.fill(false);
+    last_mode_status_.fill(-1);
+    last_feedback_stamp_ns_.fill(0);
 
     if (joint_cmd_min_rad_.size() != 12 || joint_cmd_max_rad_.size() != 12) {
       RCLCPP_WARN(this->get_logger(), "joint_cmd_min_rad/max size mismatch, using default [-3.14, 3.14]x12");
       joint_cmd_min_rad_ = std::vector<double>(12, -3.14);
       joint_cmd_max_rad_ = std::vector<double>(12, 3.14);
     }
+    if (joint_mit_min_rad_.size() != 12 || joint_mit_max_rad_.size() != 12) {
+      RCLCPP_WARN(this->get_logger(), "joint_mit_min_rad/max size mismatch, using protocol default range x12");
+      joint_mit_min_rad_ = std::vector<double>(12, ProtocolCodec::kPMin);
+      joint_mit_max_rad_ = std::vector<double>(12, ProtocolCodec::kPMax);
+    }
+    RebuildMotorLimitTable();
   }
 
 private:
@@ -277,7 +298,8 @@ private:
     const size_t idx = std::min(route.trajectory_index, static_cast<size_t>(11));
     const double champ_limited = ClampJointCommand(idx, champ_position_raw);
     const double champ_smoothed = SmoothJointCommand(idx, champ_limited);
-    const double mapped_position = joint_signs_[idx] * champ_smoothed + joint_offsets_rad_[idx];
+    const double mapped_position_raw = joint_signs_[idx] * champ_smoothed + joint_offsets_rad_[idx];
+    const double mapped_position = ClampMotorCommand(idx, mapped_position_raw);
     if (mapped_out != nullptr) {
       (*mapped_out)[idx] = mapped_position;
     }
@@ -350,11 +372,31 @@ private:
       const size_t idx = std::min(route->trajectory_index, static_cast<size_t>(11));
       const double sign = std::fabs(joint_signs_[idx]) < 1e-6 ? 1.0 : joint_signs_[idx];
       const double champ_feedback = (feedback->current_angle - joint_offsets_rad_[idx]) / sign;
+      const rclcpp::Time now = this->now();
       last_feedback_champ_rad_[idx] = champ_feedback;
+      last_feedback_stamp_ns_[idx] = now.nanoseconds();
       if (!boot_feedback_captured_[idx]) {
         boot_feedback_champ_rad_[idx] = champ_feedback;
         boot_feedback_captured_[idx] = true;
       }
+
+      const int mode_curr = static_cast<int>(feedback->mode_status);
+      const uint8_t mid = feedback->motor_id;
+      if (enable_mode_rising_smoothing_) {
+        const bool prev_known = has_mode_status_[mid];
+        const int mode_prev = last_mode_status_[mid];
+        const bool rising_to_enabled = IsEnabledMode(mode_curr) && (!prev_known || !IsEnabledMode(mode_prev));
+        if (rising_to_enabled) {
+          ResetSmoothingForJoint(idx, champ_feedback, now);
+          RCLCPP_WARN(
+            this->get_logger(),
+            "Mode rising edge detected: motor=%u mode %d->%d, reset smoothing anchor to %.4f rad",
+            static_cast<unsigned>(mid), mode_prev, mode_curr, champ_feedback);
+        }
+      }
+      has_mode_status_[mid] = true;
+      last_mode_status_[mid] = mode_curr;
+
       if (publish_feedback_joint_states_ && feedback_joint_states_pub_) {
         PublishFeedbackJointStates();
       }
@@ -402,6 +444,24 @@ private:
     feedback_joint_states_pub_->publish(js);
   }
 
+  bool IsEnabledMode(int mode_status) const
+  {
+    return mode_status == motor_enabled_mode_status_;
+  }
+
+  void ResetSmoothingForJoint(size_t idx, double current_champ_feedback, const rclcpp::Time & now)
+  {
+    if (idx >= boot_feedback_champ_rad_.size()) {
+      return;
+    }
+    boot_feedback_champ_rad_[idx] = current_champ_feedback;
+    boot_feedback_captured_[idx] = true;
+    has_last_sent_[idx] = false;
+    last_sent_champ_rad_[idx] = current_champ_feedback;
+    first_command_time_ = now;
+    last_command_time_ = now;
+  }
+
   void ResetRuntimeTuning()
   {
     runtime_kp_can0_ = Clamp(kp_, ProtocolCodec::kKpMin, ProtocolCodec::kKpMax);
@@ -446,6 +506,23 @@ private:
       target = boot_feedback_champ_rad_[idx] + alpha * (champ_position - boot_feedback_champ_rad_[idx]);
     }
 
+    if (
+      enable_feedback_step_limit_ &&
+      feedback_step_limit_rad_ > 1e-6 &&
+      idx < last_feedback_champ_rad_.size() &&
+      std::isfinite(last_feedback_champ_rad_[idx]))
+    {
+      const int64_t stamp_ns = last_feedback_stamp_ns_[idx];
+      const int64_t now_ns = now.nanoseconds();
+      const int64_t fresh_ns = static_cast<int64_t>(feedback_fresh_timeout_s_ * 1e9);
+      if (stamp_ns > 0 && (now_ns - stamp_ns) <= fresh_ns) {
+        const double delta_fb = target - last_feedback_champ_rad_[idx];
+        if (std::fabs(delta_fb) > feedback_step_limit_rad_) {
+          target = last_feedback_champ_rad_[idx] + std::copysign(feedback_step_limit_rad_, delta_fb);
+        }
+      }
+    }
+
     const double dt = std::max((now - last_command_time_).seconds(), 1e-3);
     const double max_step = std::max(0.0, command_max_velocity_rad_s_) * dt;
     if (!has_last_sent_[idx]) {
@@ -462,6 +539,34 @@ private:
     last_sent_champ_rad_[idx] = out;
     last_command_time_ = now;
     return out;
+  }
+
+  void RebuildMotorLimitTable()
+  {
+    if (!derive_motor_limits_from_joint_cmd_) {
+      for (size_t i = 0; i < 12; ++i) {
+        const double lo = std::min(joint_mit_min_rad_[i], joint_mit_max_rad_[i]);
+        const double hi = std::max(joint_mit_min_rad_[i], joint_mit_max_rad_[i]);
+        runtime_joint_mit_min_rad_[i] = lo;
+        runtime_joint_mit_max_rad_[i] = hi;
+      }
+      return;
+    }
+
+    for (size_t i = 0; i < 12; ++i) {
+      const double a = joint_signs_[i] * joint_cmd_min_rad_[i] + joint_offsets_rad_[i];
+      const double b = joint_signs_[i] * joint_cmd_max_rad_[i] + joint_offsets_rad_[i];
+      runtime_joint_mit_min_rad_[i] = std::min(a, b);
+      runtime_joint_mit_max_rad_[i] = std::max(a, b);
+    }
+  }
+
+  double ClampMotorCommand(size_t idx, double mit_position) const
+  {
+    if (!use_motor_domain_limits_ || idx >= runtime_joint_mit_min_rad_.size()) {
+      return mit_position;
+    }
+    return Clamp(mit_position, runtime_joint_mit_min_rad_[idx], runtime_joint_mit_max_rad_[idx]);
   }
 
   static bool ParseKV(const std::string & token, std::string & key, std::string & value)
@@ -566,9 +671,20 @@ private:
   bool use_joint_cmd_limits_{true};
   std::vector<double> joint_cmd_min_rad_;
   std::vector<double> joint_cmd_max_rad_;
+  bool use_motor_domain_limits_{true};
+  bool derive_motor_limits_from_joint_cmd_{true};
+  std::vector<double> joint_mit_min_rad_;
+  std::vector<double> joint_mit_max_rad_;
+  std::array<double, 12> runtime_joint_mit_min_rad_{};
+  std::array<double, 12> runtime_joint_mit_max_rad_{};
   bool enable_startup_smoothing_{true};
   double startup_smoothing_duration_s_{1.5};
   double command_max_velocity_rad_s_{6.0};
+  bool enable_mode_rising_smoothing_{true};
+  int motor_enabled_mode_status_{2};
+  bool enable_feedback_step_limit_{true};
+  double feedback_step_limit_rad_{0.20};
+  double feedback_fresh_timeout_s_{0.30};
   bool enable_rx_decode_log_{true};
   bool prefer_joint_name_mapping_{true};
   std::vector<double> joint_signs_;
@@ -582,6 +698,9 @@ private:
   std::array<double, 12> boot_feedback_champ_rad_{};
   std::array<bool, 12> boot_feedback_captured_{};
   std::array<bool, 12> has_last_sent_{};
+  std::array<int, 256> last_mode_status_{};
+  std::array<bool, 256> has_mode_status_{};
+  std::array<int64_t, 12> last_feedback_stamp_ns_{};
   rclcpp::Time first_command_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
   size_t error_sample_count_{0};

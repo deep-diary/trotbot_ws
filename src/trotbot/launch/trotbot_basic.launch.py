@@ -106,7 +106,7 @@ def generate_launch_description():
                 "robot_description": ParameterValue(
                     Command([
                         "xacro ", description_path,
-                        " model_r:=0.15 model_g:=0.95 model_b:=0.25 model_a:=1.0"
+                        " model_r:=0.88 model_g:=0.58 model_b:=0.28 model_a:=0.95"
                     ]),
                     value_type=str,
                 ),
@@ -127,7 +127,7 @@ def generate_launch_description():
                 "robot_description": ParameterValue(
                     Command([
                         "xacro ", description_path,
-                        " model_r:=0.95 model_g:=0.2 model_b:=0.85 model_a:=0.35"
+                        " model_r:=0.28 model_g:=0.72 model_b:=0.88 model_a:=0.55"
                     ]),
                     value_type=str,
                 ),

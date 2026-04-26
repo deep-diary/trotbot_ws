@@ -18,13 +18,39 @@
 
     # 启动平滑与发送限速（减少趴姿->站立突变）
     enable_startup_smoothing: true
-    startup_smoothing_duration_s: 1.5
-    command_max_velocity_rad_s: 6.0
+    startup_smoothing_duration_s: 3.0
+    command_max_velocity_rad_s: 1.0
 
-    # 发送前关节限位（单位 rad，顺序同 joint_signs/joint_offsets）
+    # 电机模式上升沿（Reset/Cali -> Motor）触发平滑锚点重置
+    # 规格书反馈模式：0=Reset, 1=Cali, 2=Motor
+    enable_mode_rising_smoothing: true
+    motor_enabled_mode_status: 2
+
+    # 基于“当前位置反馈”的阈值步进发送（避免大步阶直接冲击）
+    # 当 |target - feedback| > feedback_step_limit_rad 时，只发送 feedback ± threshold
+    enable_feedback_step_limit: false
+    feedback_step_limit_rad: 2.0
+    feedback_fresh_timeout_s: 0.30
+
+    # 发送前关节限位（CHAMP/URDF 关节域，单位 rad，顺序同 joint_signs/joint_offsets）
+    # 来源：config/minidog position.jpg 的“运动范围(URDF零位)”。
+    # 每腿范围：hip[-0.17444, +0.17444] thigh[-2.6167, +2.6167] calf[-2.5469, -0.4884]
     use_joint_cmd_limits: true
-    joint_cmd_min_rad: [-3.14, -3.14, -3.14, -3.14, -3.14, -3.14, -3.14, -3.14, -3.14, -3.14, -3.14, -3.14]
-    joint_cmd_max_rad: [3.14, 3.14, 3.14, 3.14, 3.14, 3.14, 3.14, 3.14, 3.14, 3.14, 3.14, 3.14]
+    joint_cmd_min_rad: [-0.17444, -2.6167, -2.5469, -0.17444, -2.6167, -2.5469, -0.17444, -2.6167, -2.5469, -0.17444, -2.6167, -2.5469]
+    joint_cmd_max_rad: [0.17444, 2.6167, -0.4884, 0.17444, 2.6167, -0.4884, 0.17444, 2.6167, -0.4884, 0.17444, 2.6167, -0.4884]
+
+    # 电机域（MIT角）显式限位（单位 rad）
+    # use_motor_domain_limits=true 时生效。
+    # derive_motor_limits_from_joint_cmd=true：按 θ_mit=sign*θ_champ+offset 从 joint_cmd_* 自动推导（推荐）
+    # derive_motor_limits_from_joint_cmd=false：使用下面 joint_mit_* 显式数组（线性硬限位）
+    use_motor_domain_limits: true
+    derive_motor_limits_from_joint_cmd: true
+    joint_mit_min_rad: [-12.57, -12.57, -12.57, -12.57, -12.57, -12.57, -12.57, -12.57, -12.57, -12.57, -12.57, -12.57]
+    joint_mit_max_rad: [12.57, 12.57, 12.57, 12.57, 12.57, 12.57, 12.57, 12.57, 12.57, 12.57, 12.57, 12.57]
+    # 若需使用实测机械限位（src/trotbot/hal/ref/dog/README.md 表 56-73）：
+    # derive_motor_limits_from_joint_cmd: false
+    # joint_mit_min_rad: [-0.3, -0.6, -2.26, -0.3, -1.4, 0.0, -0.3, -0.6, -2.26, -0.3, -1.4, 0.0]
+    # joint_mit_max_rad: [0.3, 1.4, 0.0, 0.3, 0.6, 2.26, 0.3, 1.4, 0.0, 0.3, 0.6, 2.26]
     enable_rx_decode_log: true
     prefer_joint_name_mapping: true
     # 观测：motor_protocol 发布 /mit_motor_position_rad (sensor_msgs/JointState)，position 为 MIT 帧内弧度 θ_mit=sign*θ_champ+offset；name 与 CHAMP 关节名同序。电机 ID 11–63 见 dog_mapper 注释。
@@ -54,15 +80,18 @@
     #   LH: -hip, +thigh, -calf_mag | RH: +hip, -thigh, +calf_mag
     # calf 填**正数**幅值（小腿偏移在 LF/LH 为负，RF/RH 为正）。
     expand_joint_offsets_from_mirror: true
-    # 基于结构反馈的狗子底部接触地面
+    # 场景A（装外壳）：外壳底部接触地面（当前先屏蔽）
     # joint_offset_hip_rad: 0.17444
     # joint_offset_thigh_rad: 1.0031
     # joint_offset_calf_rad: 2.5469
+    # joint_offsets_rad: [0.17444, 1.0031, -2.5469, -0.17444, -1.0031, 2.5469, -0.17444, 1.0031, -2.5469, 0.17444, -1.0031, 2.5469]
 
-    # 基于结构反馈的狗子髋关节保持水平（须写 0.0，勿写 0，否则 ROS 2 参数类型会变成 integer）
+    # 场景B（无外壳）：底部垫高使髋关节保持水平（当前启用）
+    # 注意：须写 0.0，勿写 0，否则 ROS 2 参数类型会变成 integer
     joint_offset_hip_rad: 0.0
     joint_offset_thigh_rad: 1.0031
     joint_offset_calf_rad: 2.5469
 
-    # 由上行三数按镜像规则展开的 12 维（LF|RF|LH|RH × hip/thigh/calf）；改标定时请同步更新上行三数与本行。
-    joint_offsets_rad: [0.17444, 1.0031, -2.5469, -0.17444, -1.0031, 2.5469, -0.17444, 1.0031, -2.5469, 0.17444, -1.0031, 2.5469]
+    # 由“当前启用场景”三数按镜像规则展开的 12 维（LF|RF|LH|RH × hip/thigh/calf）
+    # 当前场景B对应：hip=0.0, thigh=1.0031, calf=2.5469
+    joint_offsets_rad: [0.0, 1.0031, -2.5469, -0.0, -1.0031, 2.5469, -0.0, 1.0031, -2.5469, 0.0, -1.0031, 2.5469]

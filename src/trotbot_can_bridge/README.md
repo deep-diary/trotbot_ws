@@ -280,6 +280,38 @@ ros2 topic pub --once /mit_gains_cmd std_msgs/msg/String "{data: 'reset=1'}"
 
 - 启动初期会优先参考电机反馈位置，按插值 + 速度限幅过渡到控制目标，减小趴姿启动突变。
 - 每条关节命令在发送前先做限位，再映射到 MIT 角度发送，避免越界冲击。
+- 当前默认限位已按 `config/minidog position.jpg` 的“运动范围(URDF零位)”录入（hip/thigh/calf）。
+
+电机域（MIT角）显式限位：
+
+- `use_motor_domain_limits`
+- `derive_motor_limits_from_joint_cmd`
+- `joint_mit_min_rad` / `joint_mit_max_rad`
+
+推荐用法：
+
+- `derive_motor_limits_from_joint_cmd=true`：按 `θ_mit = sign*θ_champ + offset` 从 `joint_cmd_*` 自动推导电机域限位（与映射一致）。
+- 若你有实测电机域机械极限表（如 EL05 台架标定），可设 `derive_motor_limits_from_joint_cmd=false`，并直接填写 `joint_mit_*` 强制硬限位。
+
+关节偏移（`joint_offset_*`）场景说明：
+
+- 场景A（装外壳，外壳底部接地）：建议使用 `hip≈0.17444, thigh≈1.0031, calf≈2.5469`
+- 场景B（无外壳，底部垫高使髋关节水平）：建议使用 `hip=0.0, thigh≈1.0031, calf≈2.5469`
+
+当前默认配置启用场景B；场景A仅保留为注释参考。
+
+新增（使能沿 + 反馈阈值步进）：
+
+- `enable_mode_rising_smoothing`
+- `motor_enabled_mode_status`（EL05 规格书：`0=Reset, 1=Cali, 2=Motor`，默认 `2`）
+- `enable_feedback_step_limit`
+- `feedback_step_limit_rad`
+- `feedback_fresh_timeout_s`
+
+行为说明：
+
+- 当反馈 `mode_status` 发生“失能/标定 -> 运行”上升沿时，会以当前反馈角为锚点重置平滑，避免使能瞬间冲击。
+- 发送目标前会参考最新反馈角：若 `|target - feedback|` 超过阈值，只发送 `feedback ± feedback_step_limit_rad`，实现分步逼近。
 
 ### 推荐联调顺序（先走起来，再提质）
 
@@ -409,9 +441,9 @@ ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 base_link fb/base_link
 文件：`src/trotbot/launch/trotbot_basic.launch.py`
 
 - 目标模型参数：
-  - `model_r:=0.15 model_g:=0.95 model_b:=0.25 model_a:=1.0`
+  - `model_r:=0.88 model_g:=0.58 model_b:=0.28 model_a:=0.95`
 - 反馈模型参数：
-  - `model_r:=0.95 model_g:=0.2 model_b:=0.85 model_a:=0.35`
+  - `model_r:=0.28 model_g:=0.72 model_b:=0.88 model_a:=0.55`
 
 含义：
 
