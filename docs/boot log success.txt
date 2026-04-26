@@ -1,0 +1,243 @@
+[  839.447610] watchdog: watchdog0: watchdog did not stop!
+[  840.090734] reboot: Restarting system
+DDR 3488111f83 cym 25/07/23-14:49.05,fwver: v1.17
+LPDDR4X, 1848MHz
+channel[0] BW=16 Col=10 Bk=8 CS0 Row=17 CS=1 Die BW=16 Size=2048MB
+channel[1] BW=16 Col=10 Bk=8 CS0 Row=17 CS=1 Die BW=16 Size=2048MB
+channel[2] BW=16 Col=10 Bk=8 CS0 Row=17 CS=1 Die BW=16 Size=2048MB
+channel[3] BW=16 Col=10 Bk=8 CS0 Row=17 CS=1 Die BW=16 Size=2048MB
+Manufacturer ID:0xff
+CH0 RX Vref:30.1%, TX Vref:21.8%,0.0%DQ rds:
+h4 l0, h3 l0, h0 l0, h1 l0, h3 l0, h7 l0, h1 l0, h4 l0,
+h4 l0, h2 l0, h2 l0, h0 l0, h3 l0, h3 l0, h0 l1, h2 l0,
+
+CH1 RX Vref:26.3%, TX Vref:22.8%,0.0%DQ rds:
+h2 l0, h3 l0, h6 l0, h1 l0, h2 l0, h2 l0, h7 l0, h0 l0,
+h0 l0, h0 l0, h1 l0, h0 l0, h2 l0, h2 l0, h1 l0, h0 l0,
+
+CH2 RX Vref:29.7%, TX Vref:20.8%,0.0%DQ rds:
+h3 l0, h3 l0, h1 l0, h6 l0, h5 l0, h2 l0, h7 l0, h2 l0,
+h5 l0, h1 l0, h4 l0, h6 l0, h4 l0, h3 l0, h6 l0, h3 l0,
+
+CH3 RX Vref:31.8%, TX Vref:20.8%,0.0%DQ rds:
+h1 l0, h1 l0, h2 l0, h4 l0, h1 l0, h0 l0, h4 l0, h1 l0,
+h6 l0, h3 l0, h4 l0, h1 l0, h6 l0, h3 l0, h2 l0, h2 l0,
+
+stride=0x2, ddr_config=0x0
+hash ch_mask0-1 0x20 0x40, bank_mask0-3 0xa00 0x1400 0x2800 0x0, rank_mask0 0x0
+change to F1: 528MHz
+change to F2: 1068MHz
+change to F3: 1560MHz
+change to F0: 1848MHz
+out
+U-Boot SPL board init
+U-Boot SPL 2017.09-ge4e124926e-230922 #lxh (Sep 25 2023 - 10:58:38), fwver: v1.1                                                                                                                                                            3
+unknown raw ID 0 0 0
+unrecognized JEDEC id bytes: 00, 00, 00
+Trying to boot from MMC2
+No misc partition
+spl: partition error
+Trying fit image at 0x4000 sector
+## Verified-boot: 0
+## Checking atf-1 0x00040000 ... sha256(6a4a192c10...) + OK
+## Checking uboot 0x00200000 ... sha256(75072b84f4...) + OK
+## Checking fdt 0x00340958 ... sha256(d142e75cde...) + OK
+## Checking atf-2 0xff100000 ... sha256(70505bb764...) + OK
+## Checking atf-3 0x000f0000 ... sha256(569ee96047...) + OK
+Jumping to U-Boot(0x00200000) via ARM Trusted Firmware(0x00040000)
+Total: 252.824/424.728 ms
+
+INFO:    Preloader serial: 2
+NOTICE:  BL31: v2.3():v2.3-831-g92b1674a5:derrick.huang, fwver: v1.47
+NOTICE:  BL31: Built : 16:18:39, Sep  4 2024
+INFO:    spec: 0x13
+INFO:    code: 0x88
+INFO:    ext 32k is valid
+INFO:    ddr: stride-en 4CH
+INFO:    GICv3 without legacy support detected.
+INFO:    ARM GICv3 driver initialized in EL3
+INFO:    valid_cpu_msk=0xff bcore0_rst = 0x0, bcore1_rst = 0x0
+INFO:    l3 cache partition cfg-0
+INFO:    system boots from cpu-hwid-0
+INFO:    bypass memory repair
+INFO:    idle_st=0x21fff, pd_st=0x11fff9, repair_st=0xfff70001
+INFO:    dfs DDR fsp_params[0].freq_mhz= 1848MHz
+INFO:    dfs DDR fsp_params[1].freq_mhz= 528MHz
+INFO:    dfs DDR fsp_params[2].freq_mhz= 1068MHz
+INFO:    dfs DDR fsp_params[3].freq_mhz= 1560MHz
+INFO:    BL31: Initialising Exception Handling Framework
+INFO:    BL31: Initializing runtime services
+WARNING: No OPTEE provided by BL2 boot loader, Booting device without OPTEE init                                                                                                                                                            ialization. SMC`s destined for OPTEE will return SMC_UNK
+ERROR:   Error initializing runtime service opteed_fast
+INFO:    BL31: Preparing for EL3 exit to normal world
+INFO:    Entry point address = 0x200000
+INFO:    SPSR = 0x3c9
+
+
+U-Boot 2017.09 (Mar 25 2026 - 07:53:20 +0000)
+
+Model: lubancat-4
+PreSerial: 2, raw, 0xfeb50000
+DRAM:  8 GiB
+Sysmem: init
+Relocation Offset: eda1d000
+Relocation fdt: eb9f9618 - eb9fecc0
+CR: M/C/I
+Using default environment
+
+no mmc device at slot 1
+mmc@fe2c0000: 1 (SD), mmc@fe2e0000: 0
+Bootdev(atags): mmc 1
+MMC1: Legacy, 52Mhz
+PartType: EFI
+DM: v2
+No misc partition
+boot mode: normal
+FIT: No boot partition
+No resource partition
+No resource partition
+Failed to load DTB, ret=-19
+No find valid DTB, ret=-22
+Failed to get kernel dtb, ret=-22
+Model: lubancat-4
+CLK: (sync kernel. arm: enter 1008000 KHz, init 1008000 KHz, kernel 0N/A)
+  b0pll 24000 KHz
+  b1pll 24000 KHz
+  lpll 24000 KHz
+  v0pll 24000 KHz
+  aupll 24000 KHz
+  cpll 1500000 KHz
+  gpll 1188000 KHz
+  npll 24000 KHz
+  ppll 100000 KHz
+  aclk_center_root 702000 KHz
+  pclk_center_root 100000 KHz
+  hclk_center_root 396000 KHz
+  aclk_center_low_root 500000 KHz
+  aclk_top_root 750000 KHz
+  pclk_top_root 100000 KHz
+  aclk_low_top_root 396000 KHz
+No misc partition
+Net:   No ethernet found.
+Hit key to stop autoboot('CTRL+C'):  0
+switch to partitions #0, OK
+mmc1 is current device
+Scanning mmc 1:1...
+Found U-Boot script /boot.scr
+reading /boot.scr
+2504 bytes read in 3 ms (814.5 KiB/s)
+## Executing script at 00500000
+Boot script loaded from mmc 1
+reading /ubuntuEnv.txt
+4723 bytes read in 4 ms (1.1 MiB/s)
+U-Boot debug: fdtfile=rk3588s-lubancat-4-v1.dtb
+U-Boot debug: overlays=rk3588s-lubancat-dp0-in-vp1-overlay rk3588s-lubancat-4-hd                                                                                                                                                            mi0-overlay rk3588-lubancat-can0-m0-overlay rk3588-lubancat-can2-m0-overlay
+U-Boot debug: overlay_prefix=
+bootargs=rootfstype=ext4 rootwait rw console=ttyS2,1500000 console=tty1 console=                                                                                                                                                            ttyFIQ0 cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory swapaccount=1                                                                                                                                                             systemd.unified_cgroup_hierarchy=0 quiet splash plymouth.ignore-serial-consoles                                                                                                                                                             uboot_env_probe=1 root=/dev/mmcblk1p2
+reading /dtbs/rockchip/rk3588s-lubancat-4-v1.dtb
+265950 bytes read in 26 ms (9.8 MiB/s)
+U-Boot debug: trying overlay_file=rk3588s-lubancat-dp0-in-vp1-overlay
+reading /dtbs/rockchip/overlay/rk3588s-lubancat-dp0-in-vp1-overlay.dtbo
+805 bytes read in 11 ms (71.3 KiB/s)
+Applying device tree overlay: /dtbs/rockchip/overlay/rk3588s-lubancat-dp0-in-vp1                                                                                                                                                            -overlay.dtbo
+U-Boot debug: apply success rk3588s-lubancat-dp0-in-vp1-overlay.dtbo
+U-Boot debug: trying overlay_file=rk3588s-lubancat-4-hdmi0-overlay
+reading /dtbs/rockchip/overlay/rk3588s-lubancat-4-hdmi0-overlay.dtbo
+1585 bytes read in 9 ms (171.9 KiB/s)
+Applying device tree overlay: /dtbs/rockchip/overlay/rk3588s-lubancat-4-hdmi0-ov                                                                                                                                                            erlay.dtbo
+U-Boot debug: apply success rk3588s-lubancat-4-hdmi0-overlay.dtbo
+U-Boot debug: trying overlay_file=rk3588-lubancat-can0-m0-overlay
+reading /dtbs/rockchip/overlay/rk3588-lubancat-can0-m0-overlay.dtbo
+476 bytes read in 8 ms (57.6 KiB/s)
+Applying device tree overlay: /dtbs/rockchip/overlay/rk3588-lubancat-can0-m0-ove                                                                                                                                                            rlay.dtbo
+U-Boot debug: apply success rk3588-lubancat-can0-m0-overlay.dtbo
+U-Boot debug: trying overlay_file=rk3588-lubancat-can2-m0-overlay
+reading /dtbs/rockchip/overlay/rk3588-lubancat-can2-m0-overlay.dtbo
+476 bytes read in 10 ms (45.9 KiB/s)
+Applying device tree overlay: /dtbs/rockchip/overlay/rk3588-lubancat-can2-m0-ove                                                                                                                                                            rlay.dtbo
+U-Boot debug: apply success rk3588-lubancat-can2-m0-overlay.dtbo
+bootargs=rootfstype=ext4 rootwait rw console=ttyS2,1500000 console=tty1 console=                                                                                                                                                            ttyFIQ0 cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory swapaccount=1                                                                                                                                                             systemd.unified_cgroup_hierarchy=0 quiet splash plymouth.ignore-serial-consoles                                                                                                                                                             uboot_env_probe=1 root=/dev/mmcblk1p2 uboot_overlay_attempted=true uboot_overlay                                                                                                                                                            _error=false
+reading /vmlinuz
+41165312 bytes read in 3306 ms (11.9 MiB/s)
+reading /initrd.img
+19306222 bytes read in 1553 ms (11.9 MiB/s)
+Fdt Ramdisk skip relocation
+No misc partition
+## Flattened Device Tree blob at 0x08300000
+   Booting using the fdt blob at 0x08300000
+   reserving fdt memory region: addr=8300000 size=61000
+  'reserved-memory' ramoops@110000: addr=110000 size=e0000
+   Using Device Tree in place at 0000000008300000, end 0000000008363fff
+Adding bank: 0x00200000 - 0xf0000000 (size: 0xefe00000)
+Adding bank: 0x100000000 - 0x200000000 (size: 0x100000000)
+Adding bank: 0x2f0000000 - 0x300000000 (size: 0x10000000)
+Total: 7535.491 ms
+
+Starting kernel ...
+
+[    7.576520] OF: fdt: Reserved memory: failed to reserve memory for node 'drm-                                                                                                                                                            logo@0': base 0x0000000000000000, size 0 MiB
+[    7.577540] OF: fdt: Reserved memory: failed to reserve memory for node 'drm-                                                                                                                                                            cubic-lut@0': base 0x0000000000000000, size 0 MiB
+[    8.598288] fiq_debugger fiq_debugger.0: error -ENXIO: IRQ fiq not found
+[    8.598911] fiq_debugger fiq_debugger.0: error -ENXIO: IRQ wakeup not found
+[    8.599548] fiq_debugger_probe: could not install nmi irq handler
+[    8.601455] debugfs: Directory 'vcc_5v0' with parent 'regulator' already pres                                                                                                                                                            ent!
+[    8.601476] debugfs: Directory 'vcc_5v0' with parent 'vcc_5v0' already presen                                                                                                                                                            t!
+[    8.675767] dw-pcie fe190000.pcie: invalid resource
+[    8.675785] dw-pcie fe190000.pcie: Failed to initialize host
+[    8.722963] rockchip-vop2 fdd90000.vop: error -ENODEV: _opp_set_regulators: n                                                                                                                                                            o regulator (vop) found
+[    8.723001] rockchip-vop2 fdd90000.vop: failed to set opp config
+[    8.723011] rockchip-vop2 fdd90000.vop: failed to init opp info
+[    8.772885] rockchip-hdptx-phy-hdmi fed60000.hdmiphy: hdptx phy pll locked!
+[    8.773183] rockchip-hdptx-phy-hdmi fed60000.hdmiphy: hdptx phy pll locked!
+[    8.776212] rockchip-hdptx-phy-hdmi fed60000.hdmiphy: hdptx phy lane locked!
+[    8.887334] rk806 spi2.0: no sleep-setting state
+[    8.887378] rk806 spi2.0: no reset-setting pinctrl state
+[    8.887405] rk806 spi2.0: no dvs-setting pinctrl state
+[    8.892668] rk_gmac-dwmac fe1c0000.ethernet: Can not read property: rx_delay.
+[    8.892715] rk_gmac-dwmac fe1c0000.ethernet: set rx_delay to 0xffffffff
+[    8.892759] rk_gmac-dwmac fe1c0000.ethernet: cannot get clock mac_clk_rx
+[    8.892793] rk_gmac-dwmac fe1c0000.ethernet: cannot get clock mac_clk_tx
+[    8.892834] rk_gmac-dwmac fe1c0000.ethernet: cannot get clock clk_mac_speed
+[    9.240011] Error: Driver 'Goodix-TS' is already registered, aborting...
+[    9.240377] .. rk pwm remotectl v2.0 init
+[    9.367684] arm-scmi firmware:scmi: Failed. SCMI protocol 17 not active.
+[    9.381585] debugfs: File 'Capture' in directory 'dapm' already present!
+[    9.383286] debugfs: File 'Capture' in directory 'dapm' already present!
+[    9.497732] mpp_rkvdec2 fdc38100.rkvdec-core: shared_niu_a is not found!
+[    9.497810] rkvdec2_init:1198: No niu aclk reset resource define
+[    9.497860] mpp_rkvdec2 fdc38100.rkvdec-core: shared_niu_h is not found!
+[    9.497911] rkvdec2_init:1201: No niu hclk reset resource define
+[    9.499404] mpp_rkvdec2 fdc48100.rkvdec-core: shared_niu_a is not found!
+[    9.499471] rkvdec2_init:1198: No niu aclk reset resource define
+[    9.499521] mpp_rkvdec2 fdc48100.rkvdec-core: shared_niu_h is not found!
+[    9.499592] rkvdec2_init:1201: No niu hclk reset resource define
+[    9.501021] mpp_rkvenc2 fdbd0000.rkvenc-core: rockchip_init_read_margin: no r                                                                                                                                                            egulator (venc) found: -19
+[    9.501449] mpp_rkvenc2 fdbd0000.rkvenc-core: error -ENODEV: _opp_set_regulat                                                                                                                                                            ors: no regulator (venc) found
+[    9.501545] mpp_rkvenc2 fdbd0000.rkvenc-core: failed to set opp config
+[    9.501597] mpp_rkvenc2 fdbd0000.rkvenc-core: failed to init opp info
+[    9.501647] mpp_rkvenc2 fdbd0000.rkvenc-core: failed to init_opp_table
+[    9.501696] rkvenc_init:2147: failed to add venc devfreq
+[    9.502524] mpp_rkvenc2 fdbe0000.rkvenc-core: rockchip_init_read_margin: no r                                                                                                                                                            egulator (venc) found: -19
+[    9.502869] mpp_rkvenc2 fdbe0000.rkvenc-core: error -ENODEV: _opp_set_regulat                                                                                                                                                            ors: no regulator (venc) found
+[    9.502964] mpp_rkvenc2 fdbe0000.rkvenc-core: failed to set opp config
+[    9.503016] mpp_rkvenc2 fdbe0000.rkvenc-core: failed to init opp info
+[    9.503065] mpp_rkvenc2 fdbe0000.rkvenc-core: failed to init_opp_table
+[    9.503114] rkvenc_init:2147: failed to add venc devfreq
+[    9.506661] debugfs: Directory 'fb000000.gpu-mali' with parent 'vdd_gpu_s0' a                                                                                                                                                            lready present!
+[    9.507543] rockchip-dmc dmc: failed to get vop bandwidth to dmc rate
+[    9.507597] rockchip-dmc dmc: failed to get vop pn to msch rl
+[    9.508329] debugfs: Directory 'fb000000.gpu-mali' with parent 'vdd_gpu_s0' a                                                                                                                                                            lready present!
+[    9.517712] RKNPU fdab0000.npu: can't request region for resource [mem 0xfdab                                                                                                                                                            0000-0xfdabffff]
+[    9.517836] RKNPU fdab0000.npu: can't request region for resource [mem 0xfdac                                                                                                                                                            0000-0xfdacffff]
+[    9.517912] RKNPU fdab0000.npu: can't request region for resource [mem 0xfdad                                                                                                                                                            0000-0xfdadffff]
+[    9.521246] debugfs: Directory 'fdab0000.npu-rknpu' with parent 'vdd_npu_s0'                                                                                                                                                             already present!
+[    9.532187] debugfs: Directory 'fdab0000.npu-rknpu' with parent 'vdd_npu_s0'                                                                                                                                                             already present!
+writable: clean, 320208/30975808 files, 8024121/124865531 blocks
+fsck from util-linux 2.37.2
+[/usr/sbin/fsck.ext4 (1) -- /dev/mmcblk1p2] fsck.ext4 -y -C0 /dev/mmcblk1p2
+e2fsck 1.46.5 (30-Dec-2021)
+writable: clean, 320208/30975808 files, 8024121/124865531 blocks
+[   10.979208] rockchip-hdptx-phy-hdmi fed60000.hdmiphy: hdptx phy pll locked!
+[   10.982913] rockchip-hdptx-phy-hdmi fed60000.hdmiphy: hdptx phy lane locked!
+
+Ubuntu 22.04.5 LTS lubancat ttyFIQ0

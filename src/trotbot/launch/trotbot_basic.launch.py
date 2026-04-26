@@ -104,12 +104,50 @@ def generate_launch_description():
         parameters=[
             {
                 "robot_description": ParameterValue(
-                    Command(["xacro ", description_path]),
+                    Command([
+                        "xacro ", description_path,
+                        " model_r:=0.15 model_g:=0.95 model_b:=0.25 model_a:=1.0"
+                    ]),
                     value_type=str,
                 ),
                 "use_sim_time": use_sim_time,
             }
         ],
+        condition=IfCondition(rviz),
+    )
+
+    # 反馈模型：订阅 /joint_states_feedback，发布带前缀 fb/ 的 TF，便于 RViz 与期望模型并行对比
+    robot_state_publisher_feedback_node = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        name="robot_state_publisher_feedback",
+        output="screen",
+        parameters=[
+            {
+                "robot_description": ParameterValue(
+                    Command([
+                        "xacro ", description_path,
+                        " model_r:=0.95 model_g:=0.2 model_b:=0.85 model_a:=0.35"
+                    ]),
+                    value_type=str,
+                ),
+                "frame_prefix": "fb/",
+                "use_sim_time": use_sim_time,
+            }
+        ],
+        remappings=[
+            ("/joint_states", "/joint_states_feedback"),
+            ("/robot_description", "/robot_description_feedback"),
+        ],
+        condition=IfCondition(rviz),
+    )
+
+    feedback_tf_bridge_node = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="feedback_tf_bridge",
+        output="screen",
+        arguments=["0", "0", "0", "0", "0", "0", "base_link", "fb/base_link"],
         condition=IfCondition(rviz),
     )
 
@@ -159,5 +197,7 @@ def generate_launch_description():
         champ_controllers_launch,    # Champ quadruped controller + state estimator
         can_bridge_launch,           # MIT-only dual-node CAN bridge
         robot_state_publisher_node,
+        robot_state_publisher_feedback_node,
+        feedback_tf_bridge_node,
         rviz_node,
     ])

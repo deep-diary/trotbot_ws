@@ -4,6 +4,27 @@
     kd: 1.5
     default_velocity: 0.0
     default_tau_ff: 0.0
+    # 运行时在线联调（std_msgs/String，key=value 空格分隔）默认话题：
+    #   /mit_gains_cmd
+    # 示例：
+    #   scope=all kp=25 kd=1.8
+    #   scope=rear tau=0.6
+    #   reset=1
+    runtime_tune_topic: /mit_gains_cmd
+
+    # 发布反馈关节角（CHAMP/URDF 关节语义，便于 RViz 对比期望 vs 实际）
+    publish_feedback_joint_states: true
+    feedback_joint_states_topic: /joint_states_feedback
+
+    # 启动平滑与发送限速（减少趴姿->站立突变）
+    enable_startup_smoothing: true
+    startup_smoothing_duration_s: 1.5
+    command_max_velocity_rad_s: 6.0
+
+    # 发送前关节限位（单位 rad，顺序同 joint_signs/joint_offsets）
+    use_joint_cmd_limits: true
+    joint_cmd_min_rad: [-3.14, -3.14, -3.14, -3.14, -3.14, -3.14, -3.14, -3.14, -3.14, -3.14, -3.14, -3.14]
+    joint_cmd_max_rad: [3.14, 3.14, 3.14, 3.14, 3.14, 3.14, 3.14, 3.14, 3.14, 3.14, 3.14, 3.14]
     enable_rx_decode_log: true
     prefer_joint_name_mapping: true
     # 观测：motor_protocol 发布 /mit_motor_position_rad (sensor_msgs/JointState)，position 为 MIT 帧内弧度 θ_mit=sign*θ_champ+offset；name 与 CHAMP 关节名同序。电机 ID 11–63 见 dog_mapper 注释。

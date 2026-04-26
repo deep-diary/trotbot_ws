@@ -232,6 +232,78 @@ IFACE=can1 MOTOR_IDS="13" MIT_P=0.2 MIT_KP=10 \
 candump -tz can1
 ```
 
+### 在线 MIT 联调（`/mit_gains_cmd`）
+
+`motor_protocol_node` 现支持运行时在线调整 `kp/kd/tau_ff`，默认话题：
+
+- `/mit_gains_cmd`（`std_msgs/msg/String`）
+
+命令格式为**空格分隔** `key=value`：
+
+- `scope=all|front|rear`（或 `can0|can1`）
+- `kp=<float>`，范围 `[0, 500]`
+- `kd=<float>`，范围 `[0, 5]`
+- `tau=<float>`（或 `tau_ff`），范围 `[-6, 6]`
+- `reset=1`：恢复到参数文件中的默认值（`kp/kd/default_tau_ff`）
+
+示例：
+
+```bash
+# 全腿同时提刚度
+ros2 topic pub --once /mit_gains_cmd std_msgs/msg/String "{data: 'scope=all kp=28 kd=1.8'}"
+
+# 仅后腿增加前馈，补偿后躯塌陷
+ros2 topic pub --once /mit_gains_cmd std_msgs/msg/String "{data: 'scope=rear tau=0.6'}"
+
+# 仅前腿减小阻尼
+ros2 topic pub --once /mit_gains_cmd std_msgs/msg/String "{data: 'scope=front kd=1.2'}"
+
+# 一键恢复默认
+ros2 topic pub --once /mit_gains_cmd std_msgs/msg/String "{data: 'reset=1'}"
+```
+
+节点会周期打印当前生效参数（`can0/can1` 分开）和命令-反馈误差统计，便于联调闭环。
+
+### 启动平滑与发送限位（新增）
+
+`control_gains.yaml` 新增了两类安全参数：
+
+- 启动平滑：
+  - `enable_startup_smoothing`
+  - `startup_smoothing_duration_s`
+  - `command_max_velocity_rad_s`
+- 发送前限位（CHAMP 关节域）：
+  - `use_joint_cmd_limits`
+  - `joint_cmd_min_rad` / `joint_cmd_max_rad`（12 维，顺序同 `joint_signs`）
+
+说明：
+
+- 启动初期会优先参考电机反馈位置，按插值 + 速度限幅过渡到控制目标，减小趴姿启动突变。
+- 每条关节命令在发送前先做限位，再映射到 MIT 角度发送，避免越界冲击。
+
+### 推荐联调顺序（先走起来，再提质）
+
+建议固定步态速度、步高和机体高度后，按下列顺序微调：
+
+1. `kp`（先）  
+   从保守值开始逐步上调，观察前进/后退是否仍“原地踏步”。如果跟踪过软，优先提高 `kp`。
+2. `kd`（后）  
+   当 `kp` 上来后出现抖动或过冲，再逐步增加 `kd` 抑制振荡。
+3. `tau_ff`（最后）  
+   在 `kp/kd` 基本稳定后，用 `tau_ff` 做重力补偿；建议优先对后腿（`scope=rear`）小步调整。
+
+验收建议：
+
+- 前后移动有明显位移，不再只是原地踏步。
+- 不出现持续高频抖振或明显发热。
+- 误差统计（`MIT tracking abs_err`）随调参趋于下降。
+
+## 第二阶段 Backlog（当前未实现）
+
+- 启动姿态平滑过渡：趴姿到站立插值/限速，减小启动突变。
+- RViz 双模型：同时显示期望姿态与电机反馈姿态。
+- 发送前限位保护：按 URDF 与电机映射约束关节目标，避免机械越界。
+
 应看到 `id=0x01xxxx0D`（CMD=1，末字节为 motor_id），`data` 为 8 字节 MIT 控制量。
 
 ### 主动上报（通信类型 24）
@@ -302,3 +374,62 @@ sudo systemctl restart can-up.service
 - 先核对 `/boot/firmware/ubuntuEnv.txt` 的 `fdtfile` / `overlays`
 - 再核对系统里是否存在对应 CAN overlay 文件（不同发行版路径可能不同）
 - 仅在接口已出现时，`can-up.service` 才能生效
+
+#### 常见问题：`RobotModelFeedback` 提示无 TF（No transform from ...）
+
+现象：
+
+- RViz 中反馈模型 `RobotModelFeedback` 报错 `No transform from ...`
+- TF 视图提示反馈帧与主帧不在同一棵树
+
+原因：
+
+- 反馈模型使用 `TF Prefix=fb`，其根帧为 `fb/base_link`；
+- 若未发布 `base_link -> fb/base_link` 的桥接 TF，RViz 固定帧（通常是 `base_link`）无法变换到反馈树。
+
+修复（已集成到 `trotbot_basic.launch.py`）：
+
+- 启动时自动发布静态变换：`base_link -> fb/base_link`（单位变换）。
+
+临时手工验证命令：
+
+```bash
+ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 base_link fb/base_link
+```
+
+#### 调整 RViz 两套模型颜色（目标 vs 反馈）
+
+本工程采用“双色双描述”：
+
+- 目标模型：`/robot_description`
+- 反馈模型：`/robot_description_feedback`
+
+颜色不是在 RViz 面板里改，而是在 launch 里给 xacro 传参数。
+
+文件：`src/trotbot/launch/trotbot_basic.launch.py`
+
+- 目标模型参数：
+  - `model_r:=0.15 model_g:=0.95 model_b:=0.25 model_a:=1.0`
+- 反馈模型参数：
+  - `model_r:=0.95 model_g:=0.2 model_b:=0.85 model_a:=0.35`
+
+含义：
+
+- `model_r/g/b`：颜色通道，范围 `[0,1]`
+- `model_a`：透明度，`1.0` 不透明，越小越透明
+
+修改步骤：
+
+1. 编辑上述 launch 文件中的两组 `model_*` 参数
+2. 重新构建并 source：
+
+```bash
+colcon build --packages-select trotbot --symlink-install
+source install/setup.bash
+```
+
+3. 重新启动：
+
+```bash
+ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true rviz:=true
+```
