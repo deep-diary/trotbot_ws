@@ -11,6 +11,15 @@
     #   scope=rear tau=0.6
     #   reset=1
     runtime_tune_topic: /mit_gains_cmd
+    # 临时总线发送开关：用于定位前后腿卡顿来源（true=允许发送）
+    tx_enable_can0: true
+    tx_enable_can1: true
+    # 每电机最小发送刷新（秒）：防止个别电机因上游/调度抖动长期低频
+    enable_min_tx_refresh: true
+    min_tx_refresh_interval_s: 0.02
+    # 每电机最大发送频率上限（Hz）：防止个别链路异常高频挤占总线
+    enable_max_tx_rate_limit: true
+    max_tx_rate_per_motor_hz: 60.0
 
     # 发布反馈关节角（CHAMP/URDF 关节语义，便于 RViz 对比期望 vs 实际）
     publish_feedback_joint_states: true
@@ -20,10 +29,12 @@
     enable_startup_smoothing: true
     startup_smoothing_duration_s: 3.0
     command_max_velocity_rad_s: 1.0
+    # true: 仅在启动/使能后的平滑窗口内执行速度限幅；稳态步态不再持续压幅
+    limit_velocity_only_during_smoothing: true
 
     # 电机模式上升沿（Reset/Cali -> Motor）触发平滑锚点重置
     # 规格书反馈模式：0=Reset, 1=Cali, 2=Motor
-    enable_mode_rising_smoothing: true
+    enable_mode_rising_smoothing: false
     motor_enabled_mode_status: 2
 
     # 基于“当前位置反馈”的阈值步进发送（避免大步阶直接冲击）

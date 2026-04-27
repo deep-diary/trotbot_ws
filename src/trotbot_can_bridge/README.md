@@ -272,6 +272,7 @@ ros2 topic pub --once /mit_gains_cmd std_msgs/msg/String "{data: 'reset=1'}"
   - `enable_startup_smoothing`
   - `startup_smoothing_duration_s`
   - `command_max_velocity_rad_s`
+  - `limit_velocity_only_during_smoothing`
 - 发送前限位（CHAMP 关节域）：
   - `use_joint_cmd_limits`
   - `joint_cmd_min_rad` / `joint_cmd_max_rad`（12 维，顺序同 `joint_signs`）
@@ -279,6 +280,7 @@ ros2 topic pub --once /mit_gains_cmd std_msgs/msg/String "{data: 'reset=1'}"
 说明：
 
 - 启动初期会优先参考电机反馈位置，按插值 + 速度限幅过渡到控制目标，减小趴姿启动突变。
+- `limit_velocity_only_during_smoothing=true`（默认）时，速度限幅只在平滑窗口内生效；进入稳态步态后不再持续压缩目标幅度。
 - 每条关节命令在发送前先做限位，再映射到 MIT 角度发送，避免越界冲击。
 - 当前默认限位已按 `config/minidog position.jpg` 的“运动范围(URDF零位)”录入（hip/thigh/calf）。
 

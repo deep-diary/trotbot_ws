@@ -113,51 +113,107 @@ private:
   void EnqueueFrame(const CanFrameMessage & frame)
   {
     ++tx_enqueued_total_;
-    if (static_cast<int>(tx_queue_.size()) >= tx_queue_max_) {
+    if (frame.bus == CanBus::CAN0) {
+      ++tx_enqueued_can0_total_;
+    } else {
+      ++tx_enqueued_can1_total_;
+    }
+    if (static_cast<int>(tx_queue_can0_.size() + tx_queue_can1_.size()) >= tx_queue_max_) {
       ++tx_drop_overflow_total_;
-      tx_queue_.pop_front();
+      DropOldestForOverflow();
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *this->get_clock(), 2000,
         "TX queue overflow, dropping oldest frame (queue_max=%d)", tx_queue_max_);
     }
-    tx_queue_.push_back(PendingFrame{frame, 0});
+    if (frame.bus == CanBus::CAN0) {
+      tx_queue_can0_.push_back(PendingFrame{frame, 0});
+    } else {
+      tx_queue_can1_.push_back(PendingFrame{frame, 0});
+    }
   }
 
-  void FlushTxQueue()
+  void DropOldestForOverflow()
   {
-    int sent_this_cycle = 0;
-    while (!tx_queue_.empty() && sent_this_cycle < max_tx_per_cycle_) {
-      auto & pending = tx_queue_.front();
-      const bool sent = driver_.Send(pending.frame);
+    if (tx_queue_can0_.empty() && tx_queue_can1_.empty()) {
+      return;
+    }
+    if (tx_queue_can0_.empty()) {
+      tx_queue_can1_.pop_front();
+      return;
+    }
+    if (tx_queue_can1_.empty()) {
+      tx_queue_can0_.pop_front();
+      return;
+    }
+    // Prefer dropping from the longer queue to keep both buses balanced.
+    if (tx_queue_can0_.size() >= tx_queue_can1_.size()) {
+      tx_queue_can0_.pop_front();
+    } else {
+      tx_queue_can1_.pop_front();
+    }
+  }
+
+  int FlushOneBusQueue(std::deque<PendingFrame> & queue, int budget)
+  {
+    int sent = 0;
+    while (!queue.empty() && sent < budget) {
+      auto & pending = queue.front();
+      const bool is_can0 = (pending.frame.bus == CanBus::CAN0);
+      const bool sent_ok = driver_.Send(pending.frame);
       const int err = driver_.LastErrno();
       const long io_size = driver_.LastIoSize();
-      if (sent) {
+      if (sent_ok) {
         ++tx_send_ok_total_;
-        if (pending.frame.bus == CanBus::CAN0) {
+        if (is_can0) {
           ++tx_ok_can0_total_;
         } else {
           ++tx_ok_can1_total_;
         }
         if (pending.retries > 0) {
           ++tx_retry_success_total_;
+          if (is_can0) {
+            ++tx_retry_success_can0_total_;
+          } else {
+            ++tx_retry_success_can1_total_;
+          }
         }
         PublishHexLine(true, pending.frame);
         RCLCPP_DEBUG(
           this->get_logger(), "TX %s", ProtocolCodec::FrameSummary(pending.frame).c_str());
-        tx_queue_.pop_front();
-        ++sent_this_cycle;
+        queue.pop_front();
+        ++sent;
         continue;
       }
 
       ++tx_send_fail_total_;
+      if (is_can0) {
+        ++tx_send_fail_can0_total_;
+      } else {
+        ++tx_send_fail_can1_total_;
+      }
       if (IsRetryableSendErrno(err)) {
         ++tx_retryable_fail_total_;
+        if (is_can0) {
+          ++tx_retryable_fail_can0_total_;
+        } else {
+          ++tx_retryable_fail_can1_total_;
+        }
         ++pending.retries;
         if (pending.retries == 1) {
           ++tx_retry_frame_total_;
+          if (is_can0) {
+            ++tx_retry_frame_can0_total_;
+          } else {
+            ++tx_retry_frame_can1_total_;
+          }
         }
         if (pending.retries > max_retry_per_frame_) {
           ++tx_drop_retry_exceeded_total_;
+          if (is_can0) {
+            ++tx_drop_retry_exceeded_can0_total_;
+          } else {
+            ++tx_drop_retry_exceeded_can1_total_;
+          }
           RCLCPP_WARN_THROTTLE(
             this->get_logger(), *this->get_clock(), 2000,
             "SocketCAN send failed retry-exceeded: retries=%d errno=%d(%s) io_size=%ld frame=%s",
@@ -166,14 +222,19 @@ private:
             std::strerror(err),
             io_size,
             ProtocolCodec::FrameSummary(pending.frame).c_str());
-          tx_queue_.pop_front();
+          queue.pop_front();
           continue;
         }
-        // retryable error: keep frame and try next poll cycle
+        // Retryable error: stop this bus in this cycle, but allow the other bus to proceed.
         break;
       }
 
       ++tx_drop_non_retryable_total_;
+      if (is_can0) {
+        ++tx_drop_non_retryable_can0_total_;
+      } else {
+        ++tx_drop_non_retryable_can1_total_;
+      }
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *this->get_clock(), 2000,
         "SocketCAN send failed non-retryable: errno=%d(%s) io_size=%ld frame=%s",
@@ -181,7 +242,36 @@ private:
         std::strerror(err),
         io_size,
         ProtocolCodec::FrameSummary(pending.frame).c_str());
-      tx_queue_.pop_front();
+      queue.pop_front();
+    }
+    return sent;
+  }
+
+  void FlushTxQueue()
+  {
+    if (max_tx_per_cycle_ <= 0) {
+      return;
+    }
+    const int half_budget = std::max(1, max_tx_per_cycle_ / 2);
+    const int budget0 = half_budget;
+    const int budget1 = max_tx_per_cycle_ - half_budget;
+
+    int sent = 0;
+    sent += FlushOneBusQueue(tx_queue_can0_, budget0);
+    sent += FlushOneBusQueue(tx_queue_can1_, budget1);
+
+    int remaining = max_tx_per_cycle_ - sent;
+    while (remaining > 0) {
+      int extra = 0;
+      extra += FlushOneBusQueue(tx_queue_can0_, 1);
+      if (extra == 0) {
+        extra += FlushOneBusQueue(tx_queue_can1_, 1);
+      }
+      if (extra == 0) {
+        break;
+      }
+      sent += extra;
+      remaining = max_tx_per_cycle_ - sent;
     }
   }
 
@@ -221,6 +311,8 @@ private:
   void PrintStats()
   {
     const uint64_t d_enq = tx_enqueued_total_ - last_tx_enqueued_total_;
+    const uint64_t d_enq0 = tx_enqueued_can0_total_ - last_tx_enqueued_can0_total_;
+    const uint64_t d_enq1 = tx_enqueued_can1_total_ - last_tx_enqueued_can1_total_;
     const uint64_t d_ok = tx_send_ok_total_ - last_tx_send_ok_total_;
     const uint64_t d_fail = tx_send_fail_total_ - last_tx_send_fail_total_;
     const uint64_t d_retry_fail = tx_retryable_fail_total_ - last_tx_retryable_fail_total_;
@@ -229,8 +321,32 @@ private:
     const uint64_t d_drop_ov = tx_drop_overflow_total_ - last_tx_drop_overflow_total_;
     const uint64_t d_drop_nr = tx_drop_non_retryable_total_ - last_tx_drop_non_retryable_total_;
     const uint64_t d_drop_re = tx_drop_retry_exceeded_total_ - last_tx_drop_retry_exceeded_total_;
+    const uint64_t d_fail0 = tx_send_fail_can0_total_ - last_tx_send_fail_can0_total_;
+    const uint64_t d_fail1 = tx_send_fail_can1_total_ - last_tx_send_fail_can1_total_;
+    const uint64_t d_retry_fail0 =
+      tx_retryable_fail_can0_total_ - last_tx_retryable_fail_can0_total_;
+    const uint64_t d_retry_fail1 =
+      tx_retryable_fail_can1_total_ - last_tx_retryable_fail_can1_total_;
+    const uint64_t d_retry_ok0 =
+      tx_retry_success_can0_total_ - last_tx_retry_success_can0_total_;
+    const uint64_t d_retry_ok1 =
+      tx_retry_success_can1_total_ - last_tx_retry_success_can1_total_;
+    const uint64_t d_retry_frame0 =
+      tx_retry_frame_can0_total_ - last_tx_retry_frame_can0_total_;
+    const uint64_t d_retry_frame1 =
+      tx_retry_frame_can1_total_ - last_tx_retry_frame_can1_total_;
+    const uint64_t d_drop_nr0 =
+      tx_drop_non_retryable_can0_total_ - last_tx_drop_non_retryable_can0_total_;
+    const uint64_t d_drop_nr1 =
+      tx_drop_non_retryable_can1_total_ - last_tx_drop_non_retryable_can1_total_;
+    const uint64_t d_drop_re0 =
+      tx_drop_retry_exceeded_can0_total_ - last_tx_drop_retry_exceeded_can0_total_;
+    const uint64_t d_drop_re1 =
+      tx_drop_retry_exceeded_can1_total_ - last_tx_drop_retry_exceeded_can1_total_;
 
     last_tx_enqueued_total_ = tx_enqueued_total_;
+    last_tx_enqueued_can0_total_ = tx_enqueued_can0_total_;
+    last_tx_enqueued_can1_total_ = tx_enqueued_can1_total_;
     last_tx_send_ok_total_ = tx_send_ok_total_;
     last_tx_send_fail_total_ = tx_send_fail_total_;
     last_tx_retryable_fail_total_ = tx_retryable_fail_total_;
@@ -239,6 +355,18 @@ private:
     last_tx_drop_overflow_total_ = tx_drop_overflow_total_;
     last_tx_drop_non_retryable_total_ = tx_drop_non_retryable_total_;
     last_tx_drop_retry_exceeded_total_ = tx_drop_retry_exceeded_total_;
+    last_tx_send_fail_can0_total_ = tx_send_fail_can0_total_;
+    last_tx_send_fail_can1_total_ = tx_send_fail_can1_total_;
+    last_tx_retryable_fail_can0_total_ = tx_retryable_fail_can0_total_;
+    last_tx_retryable_fail_can1_total_ = tx_retryable_fail_can1_total_;
+    last_tx_retry_success_can0_total_ = tx_retry_success_can0_total_;
+    last_tx_retry_success_can1_total_ = tx_retry_success_can1_total_;
+    last_tx_retry_frame_can0_total_ = tx_retry_frame_can0_total_;
+    last_tx_retry_frame_can1_total_ = tx_retry_frame_can1_total_;
+    last_tx_drop_non_retryable_can0_total_ = tx_drop_non_retryable_can0_total_;
+    last_tx_drop_non_retryable_can1_total_ = tx_drop_non_retryable_can1_total_;
+    last_tx_drop_retry_exceeded_can0_total_ = tx_drop_retry_exceeded_can0_total_;
+    last_tx_drop_retry_exceeded_can1_total_ = tx_drop_retry_exceeded_can1_total_;
 
     const uint64_t d_tx0 = tx_ok_can0_total_ - last_tx_ok_can0_total_;
     const uint64_t d_tx1 = tx_ok_can1_total_ - last_tx_ok_can1_total_;
@@ -264,8 +392,13 @@ private:
       "drop_overflow=%lu drop_non_retry=%lu drop_retry_exceeded=%lu queue=%zu "
       "fail_rate=%s retry_frame_ok_rate=%s",
       d_enq, d_ok, d_fail, d_retry_fail, d_retry_ok,
-      d_drop_ov, d_drop_nr, d_drop_re, tx_queue_.size(),
+      d_drop_ov, d_drop_nr, d_drop_re, tx_queue_can0_.size() + tx_queue_can1_.size(),
       fail_rate_ss.str().c_str(), retry_frame_ok_rate_ss.str().c_str());
+    RCLCPP_INFO(
+      this->get_logger(),
+      "TX enqueue bus split(5s): enq_can0=%lu enq_can1=%lu (ratio=%.3f)",
+      d_enq0, d_enq1,
+      d_enq1 > 0 ? (static_cast<double>(d_enq0) / static_cast<double>(d_enq1)) : 0.0);
 
     const int64_t mirror_0 =
       static_cast<int64_t>(d_tx0) - static_cast<int64_t>(d_rx1);
@@ -278,6 +411,13 @@ private:
       "(tx_can1-rx_can0)=%lld",
       d_tx0, d_tx1, d_rx0, d_rx1,
       static_cast<long long>(mirror_0), static_cast<long long>(mirror_1));
+    RCLCPP_INFO(
+      this->get_logger(),
+      "TX bus health(5s): "
+      "can0{fail=%lu retry_fail=%lu retry_ok=%lu retry_frames=%lu drop_non_retry=%lu drop_retry_exceeded=%lu} "
+      "can1{fail=%lu retry_fail=%lu retry_ok=%lu retry_frames=%lu drop_non_retry=%lu drop_retry_exceeded=%lu}",
+      d_fail0, d_retry_fail0, d_retry_ok0, d_retry_frame0, d_drop_nr0, d_drop_re0,
+      d_fail1, d_retry_fail1, d_retry_ok1, d_retry_frame1, d_drop_nr1, d_drop_re1);
   }
 
   std::string can0_name_;
@@ -291,7 +431,8 @@ private:
   std::string hex_rx_line_topic_;
 
   SocketCanDriver driver_;
-  std::deque<PendingFrame> tx_queue_;
+  std::deque<PendingFrame> tx_queue_can0_;
+  std::deque<PendingFrame> tx_queue_can1_;
   rclcpp::Subscription<UInt8MultiArray>::SharedPtr tx_sub_;
   rclcpp::Publisher<UInt8MultiArray>::SharedPtr rx_pub_;
   rclcpp::Publisher<String>::SharedPtr hex_tx_line_pub_;
@@ -300,24 +441,52 @@ private:
   rclcpp::TimerBase::SharedPtr stats_timer_;
 
   uint64_t tx_enqueued_total_{0};
+  uint64_t tx_enqueued_can0_total_{0};
+  uint64_t tx_enqueued_can1_total_{0};
   uint64_t tx_send_ok_total_{0};
   uint64_t tx_send_fail_total_{0};
+  uint64_t tx_send_fail_can0_total_{0};
+  uint64_t tx_send_fail_can1_total_{0};
   uint64_t tx_retryable_fail_total_{0};
+  uint64_t tx_retryable_fail_can0_total_{0};
+  uint64_t tx_retryable_fail_can1_total_{0};
   uint64_t tx_retry_success_total_{0};
+  uint64_t tx_retry_success_can0_total_{0};
+  uint64_t tx_retry_success_can1_total_{0};
   uint64_t tx_retry_frame_total_{0};
+  uint64_t tx_retry_frame_can0_total_{0};
+  uint64_t tx_retry_frame_can1_total_{0};
   uint64_t tx_drop_overflow_total_{0};
   uint64_t tx_drop_non_retryable_total_{0};
+  uint64_t tx_drop_non_retryable_can0_total_{0};
+  uint64_t tx_drop_non_retryable_can1_total_{0};
   uint64_t tx_drop_retry_exceeded_total_{0};
+  uint64_t tx_drop_retry_exceeded_can0_total_{0};
+  uint64_t tx_drop_retry_exceeded_can1_total_{0};
 
   uint64_t last_tx_enqueued_total_{0};
+  uint64_t last_tx_enqueued_can0_total_{0};
+  uint64_t last_tx_enqueued_can1_total_{0};
   uint64_t last_tx_send_ok_total_{0};
   uint64_t last_tx_send_fail_total_{0};
+  uint64_t last_tx_send_fail_can0_total_{0};
+  uint64_t last_tx_send_fail_can1_total_{0};
   uint64_t last_tx_retryable_fail_total_{0};
+  uint64_t last_tx_retryable_fail_can0_total_{0};
+  uint64_t last_tx_retryable_fail_can1_total_{0};
   uint64_t last_tx_retry_success_total_{0};
+  uint64_t last_tx_retry_success_can0_total_{0};
+  uint64_t last_tx_retry_success_can1_total_{0};
   uint64_t last_tx_retry_frame_total_{0};
+  uint64_t last_tx_retry_frame_can0_total_{0};
+  uint64_t last_tx_retry_frame_can1_total_{0};
   uint64_t last_tx_drop_overflow_total_{0};
   uint64_t last_tx_drop_non_retryable_total_{0};
+  uint64_t last_tx_drop_non_retryable_can0_total_{0};
+  uint64_t last_tx_drop_non_retryable_can1_total_{0};
   uint64_t last_tx_drop_retry_exceeded_total_{0};
+  uint64_t last_tx_drop_retry_exceeded_can0_total_{0};
+  uint64_t last_tx_drop_retry_exceeded_can1_total_{0};
 
   uint64_t tx_ok_can0_total_{0};
   uint64_t tx_ok_can1_total_{0};

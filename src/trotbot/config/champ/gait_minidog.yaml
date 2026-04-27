@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    loop_rate: 200.0                 # CHAMP 主控制循环频率（Hz）；200Hz=5ms 周期
+    loop_rate: 200.0                  # CHAMP 主控制循环频率（Hz）；200Hz=5ms 周期
     gait:
       knee_orientation : ">>"          # 膝关节弯曲方向/安装朝向标记（字符串枚举，无单位）
       pantograph_leg : false           # 是否使用平行四边形（pantograph）腿部运动学模型（布尔值，无单位）
@@ -9,7 +9,7 @@
       max_linear_velocity_y : 0.20     # 机体在 Y 方向最大线速度（m/s）
       max_angular_velocity_z : 1.0     # 绕 Z 轴最大角速度（rad/s）
       com_x_translation : 0.0          # 质心参考点在 X 方向平移补偿（m）
-      swing_height : 0.028             # 摆动相抬脚高度（m）
+      swing_height : 0.040             # 摆动相抬脚高度（m）；适度增大以抵消机构间隙造成的抬脚幅度损失
       stance_depth : 0.002             # 支撑相压脚/下探深度（m）
       stance_duration : 0.2            # 单次支撑相持续时间（s）
       # Minidog 腿较长：略高于默认 trotbot 0.12，站姿更舒展（可按实机再调）

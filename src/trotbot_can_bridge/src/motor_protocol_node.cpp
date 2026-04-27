@@ -119,6 +119,8 @@ public:
     enable_startup_smoothing_ = this->declare_parameter<bool>("enable_startup_smoothing", true);
     startup_smoothing_duration_s_ = this->declare_parameter<double>("startup_smoothing_duration_s", 1.5);
     command_max_velocity_rad_s_ = this->declare_parameter<double>("command_max_velocity_rad_s", 6.0);
+    limit_velocity_only_during_smoothing_ = this->declare_parameter<bool>(
+      "limit_velocity_only_during_smoothing", true);
     enable_mode_rising_smoothing_ = this->declare_parameter<bool>("enable_mode_rising_smoothing", true);
     motor_enabled_mode_status_ = this->declare_parameter<int>("motor_enabled_mode_status", 2);
     enable_feedback_step_limit_ = this->declare_parameter<bool>("enable_feedback_step_limit", true);
@@ -126,6 +128,12 @@ public:
     feedback_fresh_timeout_s_ = this->declare_parameter<double>("feedback_fresh_timeout_s", 0.30);
     enable_rx_decode_log_ = this->declare_parameter<bool>("enable_rx_decode_log", true);
     prefer_joint_name_mapping_ = this->declare_parameter<bool>("prefer_joint_name_mapping", true);
+    tx_enable_can0_ = this->declare_parameter<bool>("tx_enable_can0", true);
+    tx_enable_can1_ = this->declare_parameter<bool>("tx_enable_can1", true);
+    enable_min_tx_refresh_ = this->declare_parameter<bool>("enable_min_tx_refresh", true);
+    min_tx_refresh_interval_s_ = this->declare_parameter<double>("min_tx_refresh_interval_s", 0.02);
+    enable_max_tx_rate_limit_ = this->declare_parameter<bool>("enable_max_tx_rate_limit", true);
+    max_tx_rate_per_motor_hz_ = this->declare_parameter<double>("max_tx_rate_per_motor_hz", 60.0);
     joint_signs_ = this->declare_parameter<std::vector<double>>(
       "joint_signs", std::vector<double>(12, 1.0));
 
@@ -181,6 +189,9 @@ public:
         "Publishing MIT-mapped angles (θ_mit=sign*θ_champ+offset) on '%s' (same joint order as trajectory)",
         mit_mapped_topic_.c_str());
     }
+    tx_refresh_timer_ = this->create_wall_timer(
+      std::chrono::milliseconds(2),
+      std::bind(&MotorProtocolNode::OnTxRefreshTimer, this));
 
     RCLCPP_WARN(
       this->get_logger(),
@@ -200,6 +211,11 @@ public:
     has_mode_status_.fill(false);
     last_mode_status_.fill(-1);
     last_feedback_stamp_ns_.fill(0);
+    first_command_time_by_joint_ns_.fill(0);
+    last_command_time_by_joint_ns_.fill(0);
+    last_tx_pub_stamp_ns_.fill(0);
+    latest_input_champ_rad_.fill(0.0);
+    has_latest_input_.fill(false);
 
     if (joint_cmd_min_rad_.size() != 12 || joint_cmd_max_rad_.size() != 12) {
       RCLCPP_WARN(this->get_logger(), "joint_cmd_min_rad/max size mismatch, using default [-3.14, 3.14]x12");
@@ -232,45 +248,30 @@ private:
     std::array<double, 12> mapped_rad{};
     mapped_rad.fill(std::numeric_limits<double>::quiet_NaN());
 
-    // P2 前置：优先按 joint_names 名称映射；缺失时回退到索引映射
-    if (
-      prefer_joint_name_mapping_ &&
-      !msg->joint_names.empty() &&
-      msg->joint_names.size() == positions.size())
-    {
-      std::unordered_map<std::string, size_t> name_to_idx;
-      name_to_idx.reserve(msg->joint_names.size());
-      for (size_t i = 0; i < msg->joint_names.size(); ++i) {
-        name_to_idx[msg->joint_names[i]] = i;
+    // 强制固定索引映射，保证每个周期尽量覆盖 12 个电机，避免名称映射分支造成分布不均。
+    const size_t count = std::min(positions.size(), DogMapper::kTemporaryIndexMap.size());
+    if (count < DogMapper::kTemporaryIndexMap.size()) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "Trajectory positions size=%zu (<12), use last target for missing joints", positions.size());
+    }
+    for (size_t i = 0; i < DogMapper::kTemporaryIndexMap.size(); ++i) {
+      const auto route = DogMapper::GetRouteByTrajectoryIndex(i);
+      if (!route.has_value()) {
+        continue;
       }
-
-      for (size_t i = 0; i < DogMapper::kChampJointNames.size(); ++i) {
-        const auto it = name_to_idx.find(DogMapper::kChampJointNames[i]);
-        if (it == name_to_idx.end()) {
-          continue;
-        }
-        const auto route = DogMapper::GetRouteByTrajectoryIndex(i);
-        if (!route.has_value()) {
-          continue;
-        }
-        SendMitFrame(route.value(), positions[it->second], front_count, rear_count, &mapped_rad);
-        ++total_sent;
+      double target = 0.0;
+      if (i < count) {
+        target = positions[i];
+        latest_input_champ_rad_[i] = target;
+        has_latest_input_[i] = true;
+      } else if (has_latest_input_[i]) {
+        target = latest_input_champ_rad_[i];
+      } else {
+        continue;
       }
-    } else {
-      const size_t count = std::min(positions.size(), DogMapper::kTemporaryIndexMap.size());
-      if (count < DogMapper::kTemporaryIndexMap.size()) {
-        RCLCPP_WARN_THROTTLE(
-          this->get_logger(), *this->get_clock(), 2000,
-          "Trajectory positions size=%zu (<12), partial output only", positions.size());
-      }
-      for (size_t i = 0; i < count; ++i) {
-        const auto route = DogMapper::GetRouteByTrajectoryIndex(i);
-        if (!route.has_value()) {
-          continue;
-        }
-        SendMitFrame(route.value(), positions[i], front_count, rear_count, &mapped_rad);
-        ++total_sent;
-      }
+      SendMitFrame(route.value(), target, front_count, rear_count, &mapped_rad);
+      ++total_sent;
     }
 
     if (publish_mit_mapped_ && mapped_positions_pub_) {
@@ -288,6 +289,17 @@ private:
       this->get_logger(), *this->get_clock(), 1000,
       "MIT publish: total=%zu front(can0)=%u rear(can1)=%u kp=%.2f kd=%.2f v=%.2f tau=%.2f",
       total_sent, front_count, rear_count, runtime_kp_can0_, runtime_kd_can0_, default_velocity_, runtime_tau_can0_);
+    const size_t joint_total = joint_cmd_clamp_count_total_ + joint_cmd_no_clamp_count_total_;
+    const size_t motor_total = motor_cmd_clamp_count_total_ + motor_cmd_no_clamp_count_total_;
+    const double joint_clamp_ratio = joint_total > 0 ?
+      (100.0 * static_cast<double>(joint_cmd_clamp_count_total_) / static_cast<double>(joint_total)) : 0.0;
+    const double motor_clamp_ratio = motor_total > 0 ?
+      (100.0 * static_cast<double>(motor_cmd_clamp_count_total_) / static_cast<double>(motor_total)) : 0.0;
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000,
+      "Command clamp stats(total): CHAMP=%zu/%zu(%.2f%%) MIT=%zu/%zu(%.2f%%)",
+      joint_cmd_clamp_count_total_, joint_total, joint_clamp_ratio,
+      motor_cmd_clamp_count_total_, motor_total, motor_clamp_ratio);
   }
 
   void SendMitFrame(
@@ -296,6 +308,18 @@ private:
     std::array<double, 12> * mapped_out = nullptr)
   {
     const size_t idx = std::min(route.trajectory_index, static_cast<size_t>(11));
+    const int64_t now_ns = this->now().nanoseconds();
+    if (
+      enable_max_tx_rate_limit_ &&
+      max_tx_rate_per_motor_hz_ > 1e-6 &&
+      idx < last_tx_pub_stamp_ns_.size() &&
+      last_tx_pub_stamp_ns_[idx] > 0)
+    {
+      const int64_t min_interval_ns = static_cast<int64_t>(1e9 / max_tx_rate_per_motor_hz_);
+      if ((now_ns - last_tx_pub_stamp_ns_[idx]) < min_interval_ns) {
+        return;
+      }
+    }
     const double champ_limited = ClampJointCommand(idx, champ_position_raw);
     const double champ_smoothed = SmoothJointCommand(idx, champ_limited);
     const double mapped_position_raw = joint_signs_[idx] * champ_smoothed + joint_offsets_rad_[idx];
@@ -305,6 +329,9 @@ private:
     }
 
     const bool is_front = (route.bus == CanBus::CAN0);
+    if ((is_front && !tx_enable_can0_) || (!is_front && !tx_enable_can1_)) {
+      return;
+    }
     const double use_kp = is_front ? runtime_kp_can0_ : runtime_kp_can1_;
     const double use_kd = is_front ? runtime_kd_can0_ : runtime_kd_can1_;
     const double use_tau = is_front ? runtime_tau_can0_ : runtime_tau_can1_;
@@ -338,6 +365,51 @@ private:
 
     if (route.motor_id < last_commanded_mit_rad_.size()) {
       last_commanded_mit_rad_[route.motor_id] = mapped_position;
+    }
+    if (idx < last_tx_pub_stamp_ns_.size()) {
+      last_tx_pub_stamp_ns_[idx] = now_ns;
+    }
+  }
+
+  void OnTxRefreshTimer()
+  {
+    if (!enable_min_tx_refresh_ || min_tx_refresh_interval_s_ <= 1e-6) {
+      return;
+    }
+    const int64_t now_ns = this->now().nanoseconds();
+    const int64_t refresh_ns = static_cast<int64_t>(min_tx_refresh_interval_s_ * 1e9);
+    for (const auto & route : DogMapper::kTemporaryIndexMap) {
+      const size_t idx = std::min(route.trajectory_index, static_cast<size_t>(11));
+      if (idx >= last_tx_pub_stamp_ns_.size()) {
+        continue;
+      }
+      if (last_tx_pub_stamp_ns_[idx] > 0 && (now_ns - last_tx_pub_stamp_ns_[idx]) < refresh_ns) {
+        continue;
+      }
+      const bool is_front = (route.bus == CanBus::CAN0);
+      if ((is_front && !tx_enable_can0_) || (!is_front && !tx_enable_can1_)) {
+        continue;
+      }
+      const double mapped_position =
+        route.motor_id < last_commanded_mit_rad_.size() ? last_commanded_mit_rad_[route.motor_id] :
+        std::numeric_limits<double>::quiet_NaN();
+      if (!std::isfinite(mapped_position)) {
+        continue;
+      }
+      const double use_kp = is_front ? runtime_kp_can0_ : runtime_kp_can1_;
+      const double use_kd = is_front ? runtime_kd_can0_ : runtime_kd_can1_;
+      const double use_tau = is_front ? runtime_tau_can0_ : runtime_tau_can1_;
+      const auto frame = ProtocolCodec::BuildMitControlFrame(
+        route.bus,
+        route.motor_id,
+        static_cast<float>(mapped_position),
+        static_cast<float>(default_velocity_),
+        static_cast<float>(use_kp),
+        static_cast<float>(use_kd),
+        static_cast<float>(use_tau));
+      auto packed = FrameCodec::Pack(frame);
+      tx_pub_->publish(packed);
+      last_tx_pub_stamp_ns_[idx] = now_ns;
     }
   }
 
@@ -458,8 +530,8 @@ private:
     boot_feedback_captured_[idx] = true;
     has_last_sent_[idx] = false;
     last_sent_champ_rad_[idx] = current_champ_feedback;
-    first_command_time_ = now;
-    last_command_time_ = now;
+    first_command_time_by_joint_ns_[idx] = now.nanoseconds();
+    last_command_time_by_joint_ns_[idx] = now.nanoseconds();
   }
 
   void ResetRuntimeTuning()
@@ -477,23 +549,34 @@ private:
     return std::max(lo, std::min(v, hi));
   }
 
-  double ClampJointCommand(size_t idx, double champ_position) const
+  double ClampJointCommand(size_t idx, double champ_position)
   {
     if (!use_joint_cmd_limits_ || idx >= joint_cmd_min_rad_.size() || idx >= joint_cmd_max_rad_.size()) {
       return champ_position;
     }
-    return Clamp(champ_position, joint_cmd_min_rad_[idx], joint_cmd_max_rad_[idx]);
+    const double clamped = Clamp(champ_position, joint_cmd_min_rad_[idx], joint_cmd_max_rad_[idx]);
+    if (std::fabs(clamped - champ_position) > 1e-9) {
+      ++joint_cmd_clamp_count_total_;
+    } else {
+      ++joint_cmd_no_clamp_count_total_;
+    }
+    return clamped;
   }
 
   double SmoothJointCommand(size_t idx, double champ_position)
   {
+    if (idx >= last_sent_champ_rad_.size()) {
+      return champ_position;
+    }
     const rclcpp::Time now = this->now();
-    if (first_command_time_.nanoseconds() == 0) {
-      first_command_time_ = now;
-      last_command_time_ = now;
+    const int64_t now_ns = now.nanoseconds();
+    if (first_command_time_by_joint_ns_[idx] <= 0) {
+      first_command_time_by_joint_ns_[idx] = now_ns;
+      last_command_time_by_joint_ns_[idx] = now_ns;
     }
 
     double target = champ_position;
+    bool smoothing_active = false;
     if (
       enable_startup_smoothing_ &&
       startup_smoothing_duration_s_ > 1e-3 &&
@@ -501,9 +584,10 @@ private:
       boot_feedback_captured_[idx] &&
       std::isfinite(boot_feedback_champ_rad_[idx]))
     {
-      const double elapsed = (now - first_command_time_).seconds();
+      const double elapsed = static_cast<double>(now_ns - first_command_time_by_joint_ns_[idx]) * 1e-9;
       const double alpha = Clamp(elapsed / startup_smoothing_duration_s_, 0.0, 1.0);
       target = boot_feedback_champ_rad_[idx] + alpha * (champ_position - boot_feedback_champ_rad_[idx]);
+      smoothing_active = (alpha < 0.999);
     }
 
     if (
@@ -513,7 +597,6 @@ private:
       std::isfinite(last_feedback_champ_rad_[idx]))
     {
       const int64_t stamp_ns = last_feedback_stamp_ns_[idx];
-      const int64_t now_ns = now.nanoseconds();
       const int64_t fresh_ns = static_cast<int64_t>(feedback_fresh_timeout_s_ * 1e9);
       if (stamp_ns > 0 && (now_ns - stamp_ns) <= fresh_ns) {
         const double delta_fb = target - last_feedback_champ_rad_[idx];
@@ -523,8 +606,13 @@ private:
       }
     }
 
-    const double dt = std::max((now - last_command_time_).seconds(), 1e-3);
-    const double max_step = std::max(0.0, command_max_velocity_rad_s_) * dt;
+    const bool apply_velocity_limit = !limit_velocity_only_during_smoothing_ || smoothing_active;
+    const double dt = std::max(
+      static_cast<double>(now_ns - last_command_time_by_joint_ns_[idx]) * 1e-9,
+      1e-3);
+    const double max_step = apply_velocity_limit ?
+      (std::max(0.0, command_max_velocity_rad_s_) * dt) :
+      std::numeric_limits<double>::infinity();
     if (!has_last_sent_[idx]) {
       if (idx < boot_feedback_captured_.size() && boot_feedback_captured_[idx] && std::isfinite(boot_feedback_champ_rad_[idx])) {
         last_sent_champ_rad_[idx] = boot_feedback_champ_rad_[idx];
@@ -537,7 +625,7 @@ private:
     const double delta = Clamp(target - prev, -max_step, max_step);
     const double out = prev + delta;
     last_sent_champ_rad_[idx] = out;
-    last_command_time_ = now;
+    last_command_time_by_joint_ns_[idx] = now_ns;
     return out;
   }
 
@@ -561,12 +649,18 @@ private:
     }
   }
 
-  double ClampMotorCommand(size_t idx, double mit_position) const
+  double ClampMotorCommand(size_t idx, double mit_position)
   {
     if (!use_motor_domain_limits_ || idx >= runtime_joint_mit_min_rad_.size()) {
       return mit_position;
     }
-    return Clamp(mit_position, runtime_joint_mit_min_rad_[idx], runtime_joint_mit_max_rad_[idx]);
+    const double clamped = Clamp(mit_position, runtime_joint_mit_min_rad_[idx], runtime_joint_mit_max_rad_[idx]);
+    if (std::fabs(clamped - mit_position) > 1e-9) {
+      ++motor_cmd_clamp_count_total_;
+    } else {
+      ++motor_cmd_no_clamp_count_total_;
+    }
+    return clamped;
   }
 
   static bool ParseKV(const std::string & token, std::string & key, std::string & value)
@@ -680,6 +774,7 @@ private:
   bool enable_startup_smoothing_{true};
   double startup_smoothing_duration_s_{1.5};
   double command_max_velocity_rad_s_{6.0};
+  bool limit_velocity_only_during_smoothing_{true};
   bool enable_mode_rising_smoothing_{true};
   int motor_enabled_mode_status_{2};
   bool enable_feedback_step_limit_{true};
@@ -687,6 +782,12 @@ private:
   double feedback_fresh_timeout_s_{0.30};
   bool enable_rx_decode_log_{true};
   bool prefer_joint_name_mapping_{true};
+  bool tx_enable_can0_{true};
+  bool tx_enable_can1_{true};
+  bool enable_min_tx_refresh_{true};
+  double min_tx_refresh_interval_s_{0.02};
+  bool enable_max_tx_rate_limit_{true};
+  double max_tx_rate_per_motor_hz_{60.0};
   std::vector<double> joint_signs_;
   std::vector<double> joint_offsets_rad_;
   bool publish_mit_mapped_{false};
@@ -695,14 +796,17 @@ private:
   std::array<double, 256> last_commanded_mit_rad_{};
   std::array<double, 12> last_feedback_champ_rad_{};
   std::array<double, 12> last_sent_champ_rad_{};
+  std::array<double, 12> latest_input_champ_rad_{};
   std::array<double, 12> boot_feedback_champ_rad_{};
+  std::array<bool, 12> has_latest_input_{};
   std::array<bool, 12> boot_feedback_captured_{};
   std::array<bool, 12> has_last_sent_{};
   std::array<int, 256> last_mode_status_{};
   std::array<bool, 256> has_mode_status_{};
   std::array<int64_t, 12> last_feedback_stamp_ns_{};
-  rclcpp::Time first_command_time_{0, 0, RCL_ROS_TIME};
-  rclcpp::Time last_command_time_{0, 0, RCL_ROS_TIME};
+  std::array<int64_t, 12> first_command_time_by_joint_ns_{};
+  std::array<int64_t, 12> last_command_time_by_joint_ns_{};
+  std::array<int64_t, 12> last_tx_pub_stamp_ns_{};
   size_t error_sample_count_{0};
   double error_abs_sum_{0.0};
   double error_abs_max_{0.0};
@@ -712,6 +816,10 @@ private:
   double runtime_kp_can1_{30.0};
   double runtime_kd_can1_{1.5};
   double runtime_tau_can1_{0.0};
+  size_t joint_cmd_clamp_count_total_{0};
+  size_t joint_cmd_no_clamp_count_total_{0};
+  size_t motor_cmd_clamp_count_total_{0};
+  size_t motor_cmd_no_clamp_count_total_{0};
 
   rclcpp::Subscription<JointTrajectory>::SharedPtr traj_sub_;
   rclcpp::Subscription<UInt8MultiArray>::SharedPtr rx_sub_;
@@ -719,6 +827,7 @@ private:
   rclcpp::Publisher<UInt8MultiArray>::SharedPtr tx_pub_;
   rclcpp::Publisher<String>::SharedPtr feedback_pub_;
   rclcpp::Publisher<JointState>::SharedPtr feedback_joint_states_pub_;
+  rclcpp::TimerBase::SharedPtr tx_refresh_timer_;
 };
 
 }  // namespace trotbot_can_bridge

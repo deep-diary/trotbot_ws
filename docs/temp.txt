@@ -1,0 +1,86 @@
+[motor_protocol_node-4] [INFO] [1777293400.725516564] [motor_protocol_node]: bus=can0 motor=23 mode=2 angle=1.46482 speed=-0.000762939 torque=0.658 temp=40 err=0 cmd_angle=1.4957 abs_err=0.0308783
+[motor_protocol_node-4] [INFO] [1777293400.745572237] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0310 max=1.5166 samples=96562 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293400.851620332] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293400.886116229] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/166188(0.00%) MIT=23/166188(0.01%)
+[can_transport_node-3] [INFO] [1777293401.595057467] [can_transport_node]: TX stats(5s): enq=8172 ok=8172 fail=4 retry_fail=4 retry_ok=4 drop_overflow=0 drop_non_retry=0 drop_retry_exceeded=0 queue=0 fail_rate=0.05% retry_frame_ok_rate=100.00%
+[can_transport_node-3] [INFO] [1777293401.595114631] [can_transport_node]: CAN bus counts(5s): tx_can0=2715 tx_can1=5457 rx_can0=2715 rx_can1=5453 | two-wire ping-pong check (expect ~0): (tx_can0-rx_can1)=-2738 (tx_can1-rx_can0)=2742
+[motor_protocol_node-4] [INFO] [1777293401.729176112] [motor_protocol_node]: bus=can0 motor=11 mode=2 angle=0.000191689 speed=-0.000762939 torque=-0.0152893 temp=52 err=0 cmd_angle=4.37114e-08 abs_err=0.000191645
+[motor_protocol_node-4] [INFO] [1777293401.745715351] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0309 max=1.5166 samples=97957 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293401.856288133] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293401.886559177] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/168588(0.00%) MIT=23/168588(0.01%)
+[motor_protocol_node-4] [INFO] [1777293402.729204142] [motor_protocol_node]: bus=can0 motor=23 mode=2 angle=1.35933 speed=-0.128941 torque=0.563333 temp=40 err=0 cmd_angle=1.3697 abs_err=0.0103718
+[motor_protocol_node-4] [INFO] [1777293402.745846335] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0308 max=1.5166 samples=99351 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293402.856400464] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293402.891321305] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/171000(0.00%) MIT=23/171000(0.01%)
+[motor_protocol_node-4] [INFO] [1777293403.729323285] [motor_protocol_node]: bus=can1 motor=51 mode=2 angle=0.0147686 speed=-0.000762939 torque=-0.335546 temp=60 err=0 cmd_angle=-1.39091e-08 abs_err=0.0147686
+[motor_protocol_node-4] [INFO] [1777293403.746918305] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0308 max=1.5166 samples=100745 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293403.861094171] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293403.896492449] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/173412(0.00%) MIT=23/173412(0.01%)
+[motor_protocol_node-4] [INFO] [1777293404.729478421] [motor_protocol_node]: bus=can0 motor=23 mode=2 angle=1.1096 speed=-0.000762939 torque=0.689494 temp=40 err=0 cmd_angle=1.14196 abs_err=0.0323665
+[motor_protocol_node-4] [INFO] [1777293404.747379676] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0308 max=1.5166 samples=102151 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293404.865978445] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293404.901344646] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/175824(0.00%) MIT=23/175824(0.01%)
+[motor_protocol_node-4] [INFO] [1777293405.734875521] [motor_protocol_node]: bus=can1 motor=52 mode=2 angle=0.857181 speed=-0.194553 torque=-0.970748 temp=46 err=0 cmd_angle=0.796016 abs_err=0.0611644
+[motor_protocol_node-4] [INFO] [1777293405.749260924] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0308 max=1.5166 samples=103547 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293405.870698931] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293405.905569037] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/178236(0.00%) MIT=23/178236(0.01%)
+[can_transport_node-3] [INFO] [1777293406.594819576] [can_transport_node]: TX stats(5s): enq=8170 ok=8170 fail=1 retry_fail=1 retry_ok=1 drop_overflow=0 drop_non_retry=0 drop_retry_exceeded=0 queue=0 fail_rate=0.01% retry_frame_ok_rate=100.00%
+[can_transport_node-3] [INFO] [1777293406.594921654] [can_transport_node]: CAN bus counts(5s): tx_can0=2723 tx_can1=5447 rx_can0=2723 rx_can1=5451 | two-wire ping-pong check (expect ~0): (tx_can0-rx_can1)=-2728 (tx_can1-rx_can0)=2724
+[motor_protocol_node-4] [INFO] [1777293406.734904026] [motor_protocol_node]: bus=can1 motor=52 mode=2 angle=0.663457 speed=-0.0862122 torque=-1.21703 temp=46 err=0 cmd_angle=0.596016 abs_err=0.0674407
+[motor_protocol_node-4] [INFO] [1777293406.749586623] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0308 max=1.5166 samples=104920 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293406.871614363] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293406.906314732] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/180636(0.00%) MIT=23/180636(0.01%)
+[motor_protocol_node-4] [INFO] [1777293407.735183760] [motor_protocol_node]: bus=can0 motor=13 mode=2 angle=-1.59985 speed=-0.255589 torque=-0.341222 temp=43 err=0 cmd_angle=-1.63196 abs_err=0.0321111
+[motor_protocol_node-4] [INFO] [1777293407.749755823] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0309 max=1.5166 samples=106358 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293407.876003480] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293407.910959048] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/183048(0.00%) MIT=23/183048(0.01%)
+[motor_protocol_node-4] [INFO] [1777293408.735420740] [motor_protocol_node]: bus=can0 motor=21 mode=2 angle=-0.000575066 speed=-0.00228882 torque=0.0182195 temp=44 err=0 cmd_angle=-4.56956e-08 abs_err=0.00057502
+[motor_protocol_node-4] [INFO] [1777293408.749782232] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0310 max=1.5166 samples=107680 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293408.876915065] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293408.911019599] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/185448(0.00%) MIT=23/185448(0.01%)
+[motor_protocol_node-4] [INFO] [1777293409.738599140] [motor_protocol_node]: bus=can0 motor=13 mode=2 angle=-1.98653 speed=-0.234226 torque=-0.588968 temp=43 err=0 cmd_angle=-2.02975 abs_err=0.0432195
+[motor_protocol_node-4] [INFO] [1777293409.749957500] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0310 max=1.5166 samples=109127 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293409.880794612] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293409.911193428] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/187848(0.00%) MIT=23/187848(0.01%)
+[motor_protocol_node-4] [INFO] [1777293410.738726402] [motor_protocol_node]: bus=can1 motor=52 mode=2 angle=0.0615692 speed=-0.000762939 torque=-0.448707 temp=47 err=0 cmd_angle=0.0471401 abs_err=0.0144291
+[motor_protocol_node-4] [INFO] [1777293410.750627235] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0311 max=1.5166 samples=110536 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293410.881254081] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293410.917219359] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/190260(0.00%) MIT=23/190260(0.01%)
+[can_transport_node-3] [INFO] [1777293411.594760209] [can_transport_node]: TX stats(5s): enq=8252 ok=8252 fail=0 retry_fail=0 retry_ok=0 drop_overflow=0 drop_non_retry=0 drop_retry_exceeded=0 queue=0 fail_rate=0.00% retry_frame_ok_rate=0.00%
+[can_transport_node-3] [INFO] [1777293411.594879786] [can_transport_node]: CAN bus counts(5s): tx_can0=2803 tx_can1=5449 rx_can0=2803 rx_can1=5449 | two-wire ping-pong check (expect ~0): (tx_can0-rx_can1)=-2646 (tx_can1-rx_can0)=2646
+[motor_protocol_node-4] [INFO] [1777293411.738751703] [motor_protocol_node]: bus=can1 motor=61 mode=2 angle=-0.0462255 speed=-0.000762939 torque=0.970932 temp=64 err=0 cmd_angle=4.56956e-08 abs_err=0.0462256
+[motor_protocol_node-4] [INFO] [1777293411.751318086] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0312 max=1.5166 samples=111894 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293411.885369810] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293411.920736623] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/192672(0.00%) MIT=23/192672(0.01%)
+[motor_protocol_node-4] [INFO] [1777293412.738843326] [motor_protocol_node]: bus=can0 motor=13 mode=2 angle=-1.61213 speed=0.276951 torque=-0.613321 temp=43 err=0 cmd_angle=-1.62075 abs_err=0.00862438
+[motor_protocol_node-4] [INFO] [1777293412.754801325] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0313 max=1.5166 samples=113310 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293412.885571402] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293412.925490898] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/195084(0.00%) MIT=23/195084(0.01%)
+[motor_protocol_node-4] [INFO] [1777293413.738931566] [motor_protocol_node]: bus=can1 motor=52 mode=2 angle=0.64581 speed=0.270847 torque=-0.458229 temp=47 err=0 cmd_angle=0.64714 abs_err=0.00132995
+[motor_protocol_node-4] [INFO] [1777293413.755037434] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0313 max=1.5166 samples=114742 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293413.885785652] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293413.925748900] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/197484(0.00%) MIT=23/197484(0.01%)
+[motor_protocol_node-4] [INFO] [1777293414.744318354] [motor_protocol_node]: bus=can0 motor=12 mode=2 angle=0.422932 speed=-0.000762939 torque=-0.291417 temp=32 err=0 cmd_angle=0.410243 abs_err=0.0126886
+[motor_protocol_node-4] [INFO] [1777293414.758380039] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0314 max=1.5166 samples=116132 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293414.885864984] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293414.925802280] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/199884(0.00%) MIT=23/199884(0.01%)
+[motor_protocol_node-4] [INFO] [1777293415.744332456] [motor_protocol_node]: bus=can0 motor=22 mode=2 angle=-0.434441 speed=-0.0434875 torque=0.219089 temp=32 err=0 cmd_angle=-0.42507 abs_err=0.00937054
+[motor_protocol_node-4] [INFO] [1777293415.759010985] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0314 max=1.5166 samples=117594 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293415.890498279] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293415.930560990] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/202296(0.00%) MIT=23/202296(0.01%)
+[can_transport_node-3] [INFO] [1777293416.594788051] [can_transport_node]: TX stats(5s): enq=8274 ok=8274 fail=2 retry_fail=2 retry_ok=2 drop_overflow=0 drop_non_retry=0 drop_retry_exceeded=0 queue=0 fail_rate=0.02% retry_frame_ok_rate=100.00%
+[can_transport_node-3] [INFO] [1777293416.594907045] [can_transport_node]: CAN bus counts(5s): tx_can0=2820 tx_can1=5454 rx_can0=2820 rx_can1=5454 | two-wire ping-pong check (expect ~0): (tx_can0-rx_can1)=-2634 (tx_can1-rx_can0)=2634
+[motor_protocol_node-4] [INFO] [1777293416.744412878] [motor_protocol_node]: bus=can0 motor=12 mode=2 angle=0.422548 speed=-0.000762939 torque=0.0544748 temp=32 err=0 cmd_angle=0.42507 abs_err=0.00252178
+[motor_protocol_node-4] [INFO] [1777293416.759182988] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0315 max=1.5166 samples=118954 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293416.895316015] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293416.930605852] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/204696(0.00%) MIT=23/204696(0.01%)
+[motor_protocol_node-4] [INFO] [1777293417.746302240] [motor_protocol_node]: bus=can1 motor=63 mode=2 angle=1.55535 speed=-0.171665 torque=0.830671 temp=85 err=0 cmd_angle=1.57575 abs_err=0.0203995
+[motor_protocol_node-4] [INFO] [1777293417.764294226] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0315 max=1.5166 samples=120294 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293417.895418736] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293417.935038437] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/207108(0.00%) MIT=23/207108(0.01%)
+[motor_protocol_node-4] [INFO] [1777293418.748284754] [motor_protocol_node]: bus=can0 motor=11 mode=2 angle=-0.000959396 speed=-0.000762939 torque=0.0134583 temp=52 err=0 cmd_angle=4.37114e-08 abs_err=0.00095944
+[motor_protocol_node-4] [INFO] [1777293418.764381881] [motor_protocol_node]: MIT tracking abs_err(rad): mean=0.0315 max=1.5166 samples=121743 | can0(kp=20.00,kd=1.50,tau=0.00) can1(kp=20.00,kd=1.50,tau=0.00)
+[motor_protocol_node-4] [INFO] [1777293418.895497365] [motor_protocol_node]: MIT publish: total=12 front(can0)=6 rear(can1)=6 kp=20.00 kd=1.50 v=0.00 tau=0.00
+[motor_protocol_node-4] [INFO] [1777293418.935835700] [motor_protocol_node]: Command clamp stats(total): CHAMP=0/209508(0.00%) MIT=23/209508(0.01%)
+[motor_protocol_node-4] [INFO] [1777293419.751311496] [motor_protocol_node]: bus=can1 motor=52 mode=2 angle=0.463595 speed=-0.000762939 torque=-0.831403 temp=47 err=0 cmd_angle=0.42507 abs_err=0.0385253
+
