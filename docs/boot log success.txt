@@ -1,3 +1,25 @@
+[BOOT-SUMMARY]
+记录用途：本文件保存“可成功启动并正确应用 CAN overlays”的关键启动日志样本，用于后续排障对照。
+
+本次成功判据（从日志中可见）：
+1) U-Boot 成功读取并应用目标 overlays
+   - `rk3588s-lubancat-dp0-in-vp1-overlay.dtbo`
+   - `rk3588s-lubancat-4-hdmi0-overlay.dtbo`
+   - `rk3588-lubancat-can0-m0-overlay.dtbo`
+   - `rk3588-lubancat-can2-m0-overlay.dtbo`
+2) overlays 均出现 `apply success`
+3) `uboot_overlay_error=false`
+4) 内核正常进入用户态（出现 `Ubuntu 22.04.5 LTS ...` 登录提示）
+
+建议配套核验命令（系统起来后执行）：
+- `ip -br link`
+- `ip -details link show can0`
+- `ip -details link show can1`
+
+说明：
+- 本文件保留原始完整日志，便于后续做“失败日志 vs 成功日志”逐行比对。
+- 若后续更换 DTB/overlay 组合，请在文件顶部补充新的摘要与日期。
+
 [  839.447610] watchdog: watchdog0: watchdog did not stop!
 [  840.090734] reboot: Restarting system
 DDR 3488111f83 cym 25/07/23-14:49.05,fwver: v1.17

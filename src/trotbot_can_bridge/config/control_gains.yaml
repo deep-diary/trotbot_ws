@@ -74,24 +74,29 @@
     joint_signs: [-1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0]
 
     # --- 镜像展开：四腿 hip/thigh/calf 幅值对称，只需改下面 3 个数 ---
-    # expand_joint_offsets_from_mirror=true 时，节点启动后用下面三数重算 joint_offsets_rad（与下列 12 维应一致）。
+    # expand_joint_offsets_from_mirror=true 时，节点启动后用下面三数重算 joint_offsets_rad。
+    # 也就是说：运行时以 joint_offset_hip_rad / thigh / calf 为准；joint_offsets_rad 主要用于记录与人工核对。
     # 生成规则（与 DogMapper LF|RF|LH|RH × [hip,thigh,calf] 一致）：
     #   LF: +hip, +thigh, -calf_mag | RF: -hip, -thigh, +calf_mag
     #   LH: -hip, +thigh, -calf_mag | RH: +hip, -thigh, +calf_mag
     # calf 填**正数**幅值（小腿偏移在 LF/LH 为负，RF/RH 为正）。
     expand_joint_offsets_from_mirror: true
-    # 场景A（装外壳）：外壳底部接触地面（当前先屏蔽）
+    # 场景B（备用）：装外壳、外壳触地时，4个髋关节相对“水平零位”会上翘
+    # 该场景下 hip 通常采用 0.17444（示例值），thigh/calf 与当前一致
     # joint_offset_hip_rad: 0.17444
     # joint_offset_thigh_rad: 1.0031
     # joint_offset_calf_rad: 2.5469
     # joint_offsets_rad: [0.17444, 1.0031, -2.5469, -0.17444, -1.0031, 2.5469, -0.17444, 1.0031, -2.5469, 0.17444, -1.0031, 2.5469]
 
-    # 场景B（无外壳）：底部垫高使髋关节保持水平（当前启用）
+    # 场景A（当前生效）：未装外壳，底部垫高使机身保持水平后执行 set_zero
+    # 该场景下 URDF 髋关节零位与电机零位重合，因此 hip=0.0
     # 注意：须写 0.0，勿写 0，否则 ROS 2 参数类型会变成 integer
     joint_offset_hip_rad: 0.0
     joint_offset_thigh_rad: 1.0031
     joint_offset_calf_rad: 2.5469
 
-    # 由“当前启用场景”三数按镜像规则展开的 12 维（LF|RF|LH|RH × hip/thigh/calf）
-    # 当前场景B对应：hip=0.0, thigh=1.0031, calf=2.5469
+    # 由上行三数按镜像规则展开的 12 维（LF|RF|LH|RH × hip/thigh/calf）。
+    # 场景A（hip=0.0）对应：
     joint_offsets_rad: [0.0, 1.0031, -2.5469, -0.0, -1.0031, 2.5469, -0.0, 1.0031, -2.5469, 0.0, -1.0031, 2.5469]
+    # 场景B（hip=0.17444）参考：
+    # joint_offsets_rad: [0.17444, 1.0031, -2.5469, -0.17444, -1.0031, 2.5469, -0.17444, 1.0031, -2.5469, 0.17444, -1.0031, 2.5469]

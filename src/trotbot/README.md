@@ -9,6 +9,14 @@
 
 A comprehensive ROS2 quadruped robotics platform built on the CHAMP framework with TrotBot-specific enhancements for educational robotics, research applications, and maker projects. Features custom leg geometry with configurable segment lengths, Pi 5 + PCA9685 servo control, enhanced teleop system with Nintendo Pro Controller support, and full simulation capabilities with real hardware deployment.
 
+## 📚 Documentation Entry
+
+- Workspace docs index: `docs/README.md`
+- TrotBot docs index: `docs/trotbot/README.md`
+- Software requirements list: `docs/trotbot/软件需求清单.md`
+- Architecture overview: `docs/trotbot/架构说明.md`
+- Issue tracking: `docs/trotbot/开发问题跟踪.md`
+
 ## 🚀 Quick Start
 
 ```bash
