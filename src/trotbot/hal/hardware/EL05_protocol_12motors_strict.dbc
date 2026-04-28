@@ -1,0 +1,1406 @@
+VERSION ""
+
+NS_ : 
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	VAL_TABLE_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BA_DEF_REL_
+	BA_REL_
+	BA_DEF_DEF_REL_
+	BU_SG_REL_
+	BU_EV_REL_
+	BU_BO_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_: Controller Motor11 Motor12 Motor13 Motor21 Motor22 Motor23 Motor51 Motor52 Motor53 Motor61 Motor62 Motor63
+
+BO_ 2147548427 EL05_T0_Req_M11: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor11
+
+BO_ 2164260875 EL05_T1_Req_M11: 8 Controller
+ SG_ Pos_raw : 0|16@0+ (1,0) [0|65535] "" Motor11
+ SG_ Vel_raw : 16|16@0+ (1,0) [0|65535] "" Motor11
+ SG_ Kp_raw : 32|16@0+ (1,0) [0|65535] "" Motor11
+ SG_ Kd_raw : 48|16@0+ (1,0) [0|65535] "" Motor11
+
+BO_ 2197880075 EL05_T3_Req_M11: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor11
+
+BO_ 2214657291 EL05_T4_Req_M11: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor11
+
+BO_ 2248211723 EL05_T6_Req_M11: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor11
+
+BO_ 2264988939 EL05_T7_Req_M11: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor11
+
+BO_ 2432761099 EL05_T17_Req_M11: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor11
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor11
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor11
+
+BO_ 2449538315 EL05_T18_Req_M11: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor11
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor11
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor11
+
+BO_ 2516647179 EL05_T22_Req_M11: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor11
+
+BO_ 2533424395 EL05_T23_Req_M11: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor11
+
+BO_ 2550201611 EL05_T24_Req_M11: 8 Controller
+ SG_ ReportEnable : 0|8@1+ (1,0) [0|255] "" Motor11
+ SG_ ReportPeriod : 8|16@1+ (1,0) [0|65535] "" Motor11
+ SG_ ReservedB : 24|8@1+ (1,0) [0|255] "" Motor11
+
+BO_ 2566978827 EL05_T25_Req_M11: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor11
+
+BO_ 2583756043 EL05_T26_Req_M11: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor11
+
+BO_ 2181041149 EL05_T2_Rsp_M11_Mode0: 8 Motor11
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2499808253 EL05_T21_Rsp_M11_Mode0: 8 Motor11
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2583694333 EL05_T26_Rsp_M11_Mode0: 8 Motor11
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2185235453 EL05_T2_Rsp_M11_Mode1: 8 Motor11
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2504002557 EL05_T21_Rsp_M11_Mode1: 8 Motor11
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2587888637 EL05_T26_Rsp_M11_Mode1: 8 Motor11
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2189429757 EL05_T2_Rsp_M11_Mode2: 8 Motor11
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2508196861 EL05_T21_Rsp_M11_Mode2: 8 Motor11
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2592082941 EL05_T26_Rsp_M11_Mode2: 8 Motor11
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2147548428 EL05_T0_Req_M12: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor12
+
+BO_ 2164260876 EL05_T1_Req_M12: 8 Controller
+ SG_ Pos_raw : 0|16@0+ (1,0) [0|65535] "" Motor12
+ SG_ Vel_raw : 16|16@0+ (1,0) [0|65535] "" Motor12
+ SG_ Kp_raw : 32|16@0+ (1,0) [0|65535] "" Motor12
+ SG_ Kd_raw : 48|16@0+ (1,0) [0|65535] "" Motor12
+
+BO_ 2197880076 EL05_T3_Req_M12: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor12
+
+BO_ 2214657292 EL05_T4_Req_M12: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor12
+
+BO_ 2248211724 EL05_T6_Req_M12: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor12
+
+BO_ 2264988940 EL05_T7_Req_M12: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor12
+
+BO_ 2432761100 EL05_T17_Req_M12: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor12
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor12
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor12
+
+BO_ 2449538316 EL05_T18_Req_M12: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor12
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor12
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor12
+
+BO_ 2516647180 EL05_T22_Req_M12: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor12
+
+BO_ 2533424396 EL05_T23_Req_M12: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor12
+
+BO_ 2550201612 EL05_T24_Req_M12: 8 Controller
+ SG_ ReportEnable : 0|8@1+ (1,0) [0|255] "" Motor12
+ SG_ ReportPeriod : 8|16@1+ (1,0) [0|65535] "" Motor12
+ SG_ ReservedB : 24|8@1+ (1,0) [0|255] "" Motor12
+
+BO_ 2566978828 EL05_T25_Req_M12: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor12
+
+BO_ 2583756044 EL05_T26_Req_M12: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor12
+
+BO_ 2181041405 EL05_T2_Rsp_M12_Mode0: 8 Motor12
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2499808509 EL05_T21_Rsp_M12_Mode0: 8 Motor12
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2583694589 EL05_T26_Rsp_M12_Mode0: 8 Motor12
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2185235709 EL05_T2_Rsp_M12_Mode1: 8 Motor12
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2504002813 EL05_T21_Rsp_M12_Mode1: 8 Motor12
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2587888893 EL05_T26_Rsp_M12_Mode1: 8 Motor12
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2189430013 EL05_T2_Rsp_M12_Mode2: 8 Motor12
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2508197117 EL05_T21_Rsp_M12_Mode2: 8 Motor12
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2592083197 EL05_T26_Rsp_M12_Mode2: 8 Motor12
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2147548429 EL05_T0_Req_M13: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor13
+
+BO_ 2164260877 EL05_T1_Req_M13: 8 Controller
+ SG_ Pos_raw : 0|16@0+ (1,0) [0|65535] "" Motor13
+ SG_ Vel_raw : 16|16@0+ (1,0) [0|65535] "" Motor13
+ SG_ Kp_raw : 32|16@0+ (1,0) [0|65535] "" Motor13
+ SG_ Kd_raw : 48|16@0+ (1,0) [0|65535] "" Motor13
+
+BO_ 2197880077 EL05_T3_Req_M13: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor13
+
+BO_ 2214657293 EL05_T4_Req_M13: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor13
+
+BO_ 2248211725 EL05_T6_Req_M13: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor13
+
+BO_ 2264988941 EL05_T7_Req_M13: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor13
+
+BO_ 2432761101 EL05_T17_Req_M13: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor13
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor13
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor13
+
+BO_ 2449538317 EL05_T18_Req_M13: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor13
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor13
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor13
+
+BO_ 2516647181 EL05_T22_Req_M13: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor13
+
+BO_ 2533424397 EL05_T23_Req_M13: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor13
+
+BO_ 2550201613 EL05_T24_Req_M13: 8 Controller
+ SG_ ReportEnable : 0|8@1+ (1,0) [0|255] "" Motor13
+ SG_ ReportPeriod : 8|16@1+ (1,0) [0|65535] "" Motor13
+ SG_ ReservedB : 24|8@1+ (1,0) [0|255] "" Motor13
+
+BO_ 2566978829 EL05_T25_Req_M13: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor13
+
+BO_ 2583756045 EL05_T26_Req_M13: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor13
+
+BO_ 2181041661 EL05_T2_Rsp_M13_Mode0: 8 Motor13
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2499808765 EL05_T21_Rsp_M13_Mode0: 8 Motor13
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2583694845 EL05_T26_Rsp_M13_Mode0: 8 Motor13
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2185235965 EL05_T2_Rsp_M13_Mode1: 8 Motor13
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2504003069 EL05_T21_Rsp_M13_Mode1: 8 Motor13
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2587889149 EL05_T26_Rsp_M13_Mode1: 8 Motor13
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2189430269 EL05_T2_Rsp_M13_Mode2: 8 Motor13
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2508197373 EL05_T21_Rsp_M13_Mode2: 8 Motor13
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2592083453 EL05_T26_Rsp_M13_Mode2: 8 Motor13
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2147548437 EL05_T0_Req_M21: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor21
+
+BO_ 2164260885 EL05_T1_Req_M21: 8 Controller
+ SG_ Pos_raw : 0|16@0+ (1,0) [0|65535] "" Motor21
+ SG_ Vel_raw : 16|16@0+ (1,0) [0|65535] "" Motor21
+ SG_ Kp_raw : 32|16@0+ (1,0) [0|65535] "" Motor21
+ SG_ Kd_raw : 48|16@0+ (1,0) [0|65535] "" Motor21
+
+BO_ 2197880085 EL05_T3_Req_M21: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor21
+
+BO_ 2214657301 EL05_T4_Req_M21: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor21
+
+BO_ 2248211733 EL05_T6_Req_M21: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor21
+
+BO_ 2264988949 EL05_T7_Req_M21: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor21
+
+BO_ 2432761109 EL05_T17_Req_M21: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor21
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor21
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor21
+
+BO_ 2449538325 EL05_T18_Req_M21: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor21
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor21
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor21
+
+BO_ 2516647189 EL05_T22_Req_M21: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor21
+
+BO_ 2533424405 EL05_T23_Req_M21: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor21
+
+BO_ 2550201621 EL05_T24_Req_M21: 8 Controller
+ SG_ ReportEnable : 0|8@1+ (1,0) [0|255] "" Motor21
+ SG_ ReportPeriod : 8|16@1+ (1,0) [0|65535] "" Motor21
+ SG_ ReservedB : 24|8@1+ (1,0) [0|255] "" Motor21
+
+BO_ 2566978837 EL05_T25_Req_M21: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor21
+
+BO_ 2583756053 EL05_T26_Req_M21: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor21
+
+BO_ 2181043709 EL05_T2_Rsp_M21_Mode0: 8 Motor21
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2499810813 EL05_T21_Rsp_M21_Mode0: 8 Motor21
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2583696893 EL05_T26_Rsp_M21_Mode0: 8 Motor21
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2185238013 EL05_T2_Rsp_M21_Mode1: 8 Motor21
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2504005117 EL05_T21_Rsp_M21_Mode1: 8 Motor21
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2587891197 EL05_T26_Rsp_M21_Mode1: 8 Motor21
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2189432317 EL05_T2_Rsp_M21_Mode2: 8 Motor21
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2508199421 EL05_T21_Rsp_M21_Mode2: 8 Motor21
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2592085501 EL05_T26_Rsp_M21_Mode2: 8 Motor21
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2147548438 EL05_T0_Req_M22: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor22
+
+BO_ 2164260886 EL05_T1_Req_M22: 8 Controller
+ SG_ Pos_raw : 0|16@0+ (1,0) [0|65535] "" Motor22
+ SG_ Vel_raw : 16|16@0+ (1,0) [0|65535] "" Motor22
+ SG_ Kp_raw : 32|16@0+ (1,0) [0|65535] "" Motor22
+ SG_ Kd_raw : 48|16@0+ (1,0) [0|65535] "" Motor22
+
+BO_ 2197880086 EL05_T3_Req_M22: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor22
+
+BO_ 2214657302 EL05_T4_Req_M22: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor22
+
+BO_ 2248211734 EL05_T6_Req_M22: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor22
+
+BO_ 2264988950 EL05_T7_Req_M22: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor22
+
+BO_ 2432761110 EL05_T17_Req_M22: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor22
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor22
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor22
+
+BO_ 2449538326 EL05_T18_Req_M22: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor22
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor22
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor22
+
+BO_ 2516647190 EL05_T22_Req_M22: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor22
+
+BO_ 2533424406 EL05_T23_Req_M22: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor22
+
+BO_ 2550201622 EL05_T24_Req_M22: 8 Controller
+ SG_ ReportEnable : 0|8@1+ (1,0) [0|255] "" Motor22
+ SG_ ReportPeriod : 8|16@1+ (1,0) [0|65535] "" Motor22
+ SG_ ReservedB : 24|8@1+ (1,0) [0|255] "" Motor22
+
+BO_ 2566978838 EL05_T25_Req_M22: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor22
+
+BO_ 2583756054 EL05_T26_Req_M22: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor22
+
+BO_ 2181043965 EL05_T2_Rsp_M22_Mode0: 8 Motor22
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2499811069 EL05_T21_Rsp_M22_Mode0: 8 Motor22
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2583697149 EL05_T26_Rsp_M22_Mode0: 8 Motor22
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2185238269 EL05_T2_Rsp_M22_Mode1: 8 Motor22
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2504005373 EL05_T21_Rsp_M22_Mode1: 8 Motor22
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2587891453 EL05_T26_Rsp_M22_Mode1: 8 Motor22
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2189432573 EL05_T2_Rsp_M22_Mode2: 8 Motor22
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2508199677 EL05_T21_Rsp_M22_Mode2: 8 Motor22
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2592085757 EL05_T26_Rsp_M22_Mode2: 8 Motor22
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2147548439 EL05_T0_Req_M23: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor23
+
+BO_ 2164260887 EL05_T1_Req_M23: 8 Controller
+ SG_ Pos_raw : 0|16@0+ (1,0) [0|65535] "" Motor23
+ SG_ Vel_raw : 16|16@0+ (1,0) [0|65535] "" Motor23
+ SG_ Kp_raw : 32|16@0+ (1,0) [0|65535] "" Motor23
+ SG_ Kd_raw : 48|16@0+ (1,0) [0|65535] "" Motor23
+
+BO_ 2197880087 EL05_T3_Req_M23: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor23
+
+BO_ 2214657303 EL05_T4_Req_M23: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor23
+
+BO_ 2248211735 EL05_T6_Req_M23: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor23
+
+BO_ 2264988951 EL05_T7_Req_M23: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor23
+
+BO_ 2432761111 EL05_T17_Req_M23: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor23
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor23
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor23
+
+BO_ 2449538327 EL05_T18_Req_M23: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor23
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor23
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor23
+
+BO_ 2516647191 EL05_T22_Req_M23: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor23
+
+BO_ 2533424407 EL05_T23_Req_M23: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor23
+
+BO_ 2550201623 EL05_T24_Req_M23: 8 Controller
+ SG_ ReportEnable : 0|8@1+ (1,0) [0|255] "" Motor23
+ SG_ ReportPeriod : 8|16@1+ (1,0) [0|65535] "" Motor23
+ SG_ ReservedB : 24|8@1+ (1,0) [0|255] "" Motor23
+
+BO_ 2566978839 EL05_T25_Req_M23: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor23
+
+BO_ 2583756055 EL05_T26_Req_M23: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor23
+
+BO_ 2181044221 EL05_T2_Rsp_M23_Mode0: 8 Motor23
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2499811325 EL05_T21_Rsp_M23_Mode0: 8 Motor23
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2583697405 EL05_T26_Rsp_M23_Mode0: 8 Motor23
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2185238525 EL05_T2_Rsp_M23_Mode1: 8 Motor23
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2504005629 EL05_T21_Rsp_M23_Mode1: 8 Motor23
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2587891709 EL05_T26_Rsp_M23_Mode1: 8 Motor23
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2189432829 EL05_T2_Rsp_M23_Mode2: 8 Motor23
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2508199933 EL05_T21_Rsp_M23_Mode2: 8 Motor23
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2592086013 EL05_T26_Rsp_M23_Mode2: 8 Motor23
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2147548467 EL05_T0_Req_M51: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor51
+
+BO_ 2164260915 EL05_T1_Req_M51: 8 Controller
+ SG_ Pos_raw : 0|16@0+ (1,0) [0|65535] "" Motor51
+ SG_ Vel_raw : 16|16@0+ (1,0) [0|65535] "" Motor51
+ SG_ Kp_raw : 32|16@0+ (1,0) [0|65535] "" Motor51
+ SG_ Kd_raw : 48|16@0+ (1,0) [0|65535] "" Motor51
+
+BO_ 2197880115 EL05_T3_Req_M51: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor51
+
+BO_ 2214657331 EL05_T4_Req_M51: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor51
+
+BO_ 2248211763 EL05_T6_Req_M51: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor51
+
+BO_ 2264988979 EL05_T7_Req_M51: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor51
+
+BO_ 2432761139 EL05_T17_Req_M51: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor51
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor51
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor51
+
+BO_ 2449538355 EL05_T18_Req_M51: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor51
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor51
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor51
+
+BO_ 2516647219 EL05_T22_Req_M51: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor51
+
+BO_ 2533424435 EL05_T23_Req_M51: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor51
+
+BO_ 2550201651 EL05_T24_Req_M51: 8 Controller
+ SG_ ReportEnable : 0|8@1+ (1,0) [0|255] "" Motor51
+ SG_ ReportPeriod : 8|16@1+ (1,0) [0|65535] "" Motor51
+ SG_ ReservedB : 24|8@1+ (1,0) [0|255] "" Motor51
+
+BO_ 2566978867 EL05_T25_Req_M51: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor51
+
+BO_ 2583756083 EL05_T26_Req_M51: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor51
+
+BO_ 2181051389 EL05_T2_Rsp_M51_Mode0: 8 Motor51
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2499818493 EL05_T21_Rsp_M51_Mode0: 8 Motor51
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2583704573 EL05_T26_Rsp_M51_Mode0: 8 Motor51
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2185245693 EL05_T2_Rsp_M51_Mode1: 8 Motor51
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2504012797 EL05_T21_Rsp_M51_Mode1: 8 Motor51
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2587898877 EL05_T26_Rsp_M51_Mode1: 8 Motor51
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2189439997 EL05_T2_Rsp_M51_Mode2: 8 Motor51
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2508207101 EL05_T21_Rsp_M51_Mode2: 8 Motor51
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2592093181 EL05_T26_Rsp_M51_Mode2: 8 Motor51
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2147548468 EL05_T0_Req_M52: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor52
+
+BO_ 2164260916 EL05_T1_Req_M52: 8 Controller
+ SG_ Pos_raw : 0|16@0+ (1,0) [0|65535] "" Motor52
+ SG_ Vel_raw : 16|16@0+ (1,0) [0|65535] "" Motor52
+ SG_ Kp_raw : 32|16@0+ (1,0) [0|65535] "" Motor52
+ SG_ Kd_raw : 48|16@0+ (1,0) [0|65535] "" Motor52
+
+BO_ 2197880116 EL05_T3_Req_M52: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor52
+
+BO_ 2214657332 EL05_T4_Req_M52: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor52
+
+BO_ 2248211764 EL05_T6_Req_M52: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor52
+
+BO_ 2264988980 EL05_T7_Req_M52: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor52
+
+BO_ 2432761140 EL05_T17_Req_M52: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor52
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor52
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor52
+
+BO_ 2449538356 EL05_T18_Req_M52: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor52
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor52
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor52
+
+BO_ 2516647220 EL05_T22_Req_M52: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor52
+
+BO_ 2533424436 EL05_T23_Req_M52: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor52
+
+BO_ 2550201652 EL05_T24_Req_M52: 8 Controller
+ SG_ ReportEnable : 0|8@1+ (1,0) [0|255] "" Motor52
+ SG_ ReportPeriod : 8|16@1+ (1,0) [0|65535] "" Motor52
+ SG_ ReservedB : 24|8@1+ (1,0) [0|255] "" Motor52
+
+BO_ 2566978868 EL05_T25_Req_M52: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor52
+
+BO_ 2583756084 EL05_T26_Req_M52: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor52
+
+BO_ 2181051645 EL05_T2_Rsp_M52_Mode0: 8 Motor52
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2499818749 EL05_T21_Rsp_M52_Mode0: 8 Motor52
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2583704829 EL05_T26_Rsp_M52_Mode0: 8 Motor52
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2185245949 EL05_T2_Rsp_M52_Mode1: 8 Motor52
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2504013053 EL05_T21_Rsp_M52_Mode1: 8 Motor52
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2587899133 EL05_T26_Rsp_M52_Mode1: 8 Motor52
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2189440253 EL05_T2_Rsp_M52_Mode2: 8 Motor52
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2508207357 EL05_T21_Rsp_M52_Mode2: 8 Motor52
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2592093437 EL05_T26_Rsp_M52_Mode2: 8 Motor52
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2147548469 EL05_T0_Req_M53: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor53
+
+BO_ 2164260917 EL05_T1_Req_M53: 8 Controller
+ SG_ Pos_raw : 0|16@0+ (1,0) [0|65535] "" Motor53
+ SG_ Vel_raw : 16|16@0+ (1,0) [0|65535] "" Motor53
+ SG_ Kp_raw : 32|16@0+ (1,0) [0|65535] "" Motor53
+ SG_ Kd_raw : 48|16@0+ (1,0) [0|65535] "" Motor53
+
+BO_ 2197880117 EL05_T3_Req_M53: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor53
+
+BO_ 2214657333 EL05_T4_Req_M53: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor53
+
+BO_ 2248211765 EL05_T6_Req_M53: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor53
+
+BO_ 2264988981 EL05_T7_Req_M53: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor53
+
+BO_ 2432761141 EL05_T17_Req_M53: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor53
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor53
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor53
+
+BO_ 2449538357 EL05_T18_Req_M53: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor53
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor53
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor53
+
+BO_ 2516647221 EL05_T22_Req_M53: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor53
+
+BO_ 2533424437 EL05_T23_Req_M53: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor53
+
+BO_ 2550201653 EL05_T24_Req_M53: 8 Controller
+ SG_ ReportEnable : 0|8@1+ (1,0) [0|255] "" Motor53
+ SG_ ReportPeriod : 8|16@1+ (1,0) [0|65535] "" Motor53
+ SG_ ReservedB : 24|8@1+ (1,0) [0|255] "" Motor53
+
+BO_ 2566978869 EL05_T25_Req_M53: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor53
+
+BO_ 2583756085 EL05_T26_Req_M53: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor53
+
+BO_ 2181051901 EL05_T2_Rsp_M53_Mode0: 8 Motor53
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2499819005 EL05_T21_Rsp_M53_Mode0: 8 Motor53
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2583705085 EL05_T26_Rsp_M53_Mode0: 8 Motor53
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2185246205 EL05_T2_Rsp_M53_Mode1: 8 Motor53
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2504013309 EL05_T21_Rsp_M53_Mode1: 8 Motor53
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2587899389 EL05_T26_Rsp_M53_Mode1: 8 Motor53
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2189440509 EL05_T2_Rsp_M53_Mode2: 8 Motor53
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2508207613 EL05_T21_Rsp_M53_Mode2: 8 Motor53
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2592093693 EL05_T26_Rsp_M53_Mode2: 8 Motor53
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2147548477 EL05_T0_Req_M61: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor61
+
+BO_ 2164260925 EL05_T1_Req_M61: 8 Controller
+ SG_ Pos_raw : 0|16@0+ (1,0) [0|65535] "" Motor61
+ SG_ Vel_raw : 16|16@0+ (1,0) [0|65535] "" Motor61
+ SG_ Kp_raw : 32|16@0+ (1,0) [0|65535] "" Motor61
+ SG_ Kd_raw : 48|16@0+ (1,0) [0|65535] "" Motor61
+
+BO_ 2197880125 EL05_T3_Req_M61: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor61
+
+BO_ 2214657341 EL05_T4_Req_M61: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor61
+
+BO_ 2248211773 EL05_T6_Req_M61: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor61
+
+BO_ 2264988989 EL05_T7_Req_M61: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor61
+
+BO_ 2432761149 EL05_T17_Req_M61: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor61
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor61
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor61
+
+BO_ 2449538365 EL05_T18_Req_M61: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor61
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor61
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor61
+
+BO_ 2516647229 EL05_T22_Req_M61: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor61
+
+BO_ 2533424445 EL05_T23_Req_M61: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor61
+
+BO_ 2550201661 EL05_T24_Req_M61: 8 Controller
+ SG_ ReportEnable : 0|8@1+ (1,0) [0|255] "" Motor61
+ SG_ ReportPeriod : 8|16@1+ (1,0) [0|65535] "" Motor61
+ SG_ ReservedB : 24|8@1+ (1,0) [0|255] "" Motor61
+
+BO_ 2566978877 EL05_T25_Req_M61: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor61
+
+BO_ 2583756093 EL05_T26_Req_M61: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor61
+
+BO_ 2181053949 EL05_T2_Rsp_M61_Mode0: 8 Motor61
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2499821053 EL05_T21_Rsp_M61_Mode0: 8 Motor61
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2583707133 EL05_T26_Rsp_M61_Mode0: 8 Motor61
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2185248253 EL05_T2_Rsp_M61_Mode1: 8 Motor61
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2504015357 EL05_T21_Rsp_M61_Mode1: 8 Motor61
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2587901437 EL05_T26_Rsp_M61_Mode1: 8 Motor61
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2189442557 EL05_T2_Rsp_M61_Mode2: 8 Motor61
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2508209661 EL05_T21_Rsp_M61_Mode2: 8 Motor61
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2592095741 EL05_T26_Rsp_M61_Mode2: 8 Motor61
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2147548478 EL05_T0_Req_M62: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor62
+
+BO_ 2164260926 EL05_T1_Req_M62: 8 Controller
+ SG_ Pos_raw : 0|16@0+ (1,0) [0|65535] "" Motor62
+ SG_ Vel_raw : 16|16@0+ (1,0) [0|65535] "" Motor62
+ SG_ Kp_raw : 32|16@0+ (1,0) [0|65535] "" Motor62
+ SG_ Kd_raw : 48|16@0+ (1,0) [0|65535] "" Motor62
+
+BO_ 2197880126 EL05_T3_Req_M62: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor62
+
+BO_ 2214657342 EL05_T4_Req_M62: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor62
+
+BO_ 2248211774 EL05_T6_Req_M62: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor62
+
+BO_ 2264988990 EL05_T7_Req_M62: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor62
+
+BO_ 2432761150 EL05_T17_Req_M62: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor62
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor62
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor62
+
+BO_ 2449538366 EL05_T18_Req_M62: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor62
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor62
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor62
+
+BO_ 2516647230 EL05_T22_Req_M62: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor62
+
+BO_ 2533424446 EL05_T23_Req_M62: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor62
+
+BO_ 2550201662 EL05_T24_Req_M62: 8 Controller
+ SG_ ReportEnable : 0|8@1+ (1,0) [0|255] "" Motor62
+ SG_ ReportPeriod : 8|16@1+ (1,0) [0|65535] "" Motor62
+ SG_ ReservedB : 24|8@1+ (1,0) [0|255] "" Motor62
+
+BO_ 2566978878 EL05_T25_Req_M62: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor62
+
+BO_ 2583756094 EL05_T26_Req_M62: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor62
+
+BO_ 2181054205 EL05_T2_Rsp_M62_Mode0: 8 Motor62
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2499821309 EL05_T21_Rsp_M62_Mode0: 8 Motor62
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2583707389 EL05_T26_Rsp_M62_Mode0: 8 Motor62
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2185248509 EL05_T2_Rsp_M62_Mode1: 8 Motor62
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2504015613 EL05_T21_Rsp_M62_Mode1: 8 Motor62
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2587901693 EL05_T26_Rsp_M62_Mode1: 8 Motor62
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2189442813 EL05_T2_Rsp_M62_Mode2: 8 Motor62
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2508209917 EL05_T21_Rsp_M62_Mode2: 8 Motor62
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2592095997 EL05_T26_Rsp_M62_Mode2: 8 Motor62
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2147548479 EL05_T0_Req_M63: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor63
+
+BO_ 2164260927 EL05_T1_Req_M63: 8 Controller
+ SG_ Pos_raw : 0|16@0+ (1,0) [0|65535] "" Motor63
+ SG_ Vel_raw : 16|16@0+ (1,0) [0|65535] "" Motor63
+ SG_ Kp_raw : 32|16@0+ (1,0) [0|65535] "" Motor63
+ SG_ Kd_raw : 48|16@0+ (1,0) [0|65535] "" Motor63
+
+BO_ 2197880127 EL05_T3_Req_M63: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor63
+
+BO_ 2214657343 EL05_T4_Req_M63: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor63
+
+BO_ 2248211775 EL05_T6_Req_M63: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor63
+
+BO_ 2264988991 EL05_T7_Req_M63: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor63
+
+BO_ 2432761151 EL05_T17_Req_M63: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor63
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor63
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor63
+
+BO_ 2449538367 EL05_T18_Req_M63: 8 Controller
+ SG_ ParamIndex : 0|16@1+ (1,0) [0|65535] "" Motor63
+ SG_ ReservedA : 16|16@1+ (1,0) [0|65535] "" Motor63
+ SG_ ParamValue_u32 : 32|32@1+ (1,0) [0|4294967295] "" Motor63
+
+BO_ 2516647231 EL05_T22_Req_M63: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor63
+
+BO_ 2533424447 EL05_T23_Req_M63: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor63
+
+BO_ 2550201663 EL05_T24_Req_M63: 8 Controller
+ SG_ ReportEnable : 0|8@1+ (1,0) [0|255] "" Motor63
+ SG_ ReportPeriod : 8|16@1+ (1,0) [0|65535] "" Motor63
+ SG_ ReservedB : 24|8@1+ (1,0) [0|255] "" Motor63
+
+BO_ 2566978879 EL05_T25_Req_M63: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor63
+
+BO_ 2583756095 EL05_T26_Req_M63: 8 Controller
+ SG_ Byte0 : 0|8@1+ (1,0) [0|255] "" Motor63
+
+BO_ 2181054461 EL05_T2_Rsp_M63_Mode0: 8 Motor63
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2499821565 EL05_T21_Rsp_M63_Mode0: 8 Motor63
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2583707645 EL05_T26_Rsp_M63_Mode0: 8 Motor63
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2185248765 EL05_T2_Rsp_M63_Mode1: 8 Motor63
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2504015869 EL05_T21_Rsp_M63_Mode1: 8 Motor63
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2587901949 EL05_T26_Rsp_M63_Mode1: 8 Motor63
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+BO_ 2189443069 EL05_T2_Rsp_M63_Mode2: 8 Motor63
+ SG_ Angle_raw : 0|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Speed_raw : 16|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Torque_raw : 32|16@0+ (1,0) [0|65535] "" Controller
+ SG_ Temp_raw : 48|16@0+ (1,0) [0|65535] "" Controller
+
+BO_ 2508210173 EL05_T21_Rsp_M63_Mode2: 8 Motor63
+ SG_ Fault3022 : 0|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3024 : 16|16@1+ (1,0) [0|65535] "" Controller
+ SG_ Fault3025 : 32|16@1+ (1,0) [0|65535] "" Controller
+ SG_ ReservedC : 48|16@1+ (1,0) [0|65535] "" Controller
+
+BO_ 2592096253 EL05_T26_Rsp_M63_Mode2: 8 Motor63
+ SG_ VerChar0 : 0|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar1 : 8|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar2 : 16|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar3 : 24|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar4 : 32|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar5 : 40|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar6 : 48|8@1+ (1,0) [0|255] "" Controller
+ SG_ VerChar7 : 56|8@1+ (1,0) [0|255] "" Controller
+
+CM_ "Strict-no-error EL05 DBC for 12 motors: response IDs expanded by mode(0/1/2), err bits fixed to 0.";
+CM_ "Request Type1 fixes tau_ff_raw=0 in ID[8..23] as deterministic template.";
