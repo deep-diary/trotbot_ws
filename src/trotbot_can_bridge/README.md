@@ -34,6 +34,8 @@ sudo apt-get install -y can-utils
 
 总线需已配置波特率并已 `up`（例如 1Mbps）。
 
+`/can_tx_frames`（`motor_protocol_node` → `can_transport_node`）默认使用 **Reliable + `KeepLast(can_tx_frames_qos_depth)`**（深度默认 **4000**，与 `control_gains.yaml` / `bridge.yaml` 一致），避免高频下发时 **DDS 丢帧**导致总线统计假象（ISSUE-0002）。
+
 ### 用法
 
 ```bash
@@ -229,6 +231,43 @@ IFACE=can1 MOTOR_IDS="13" MIT_P=0.2 MIT_KP=10 \
 验证建议（另一终端）：
 
 ```bash
+candump -tz can1
+```
+
+### 12 电机 MIT 200Hz 连续发送（显式脚本）
+
+用于快速核对“主站实际发送频率”和“电机反馈频率”是否接近 200Hz。  
+脚本路径：`src/trotbot_can_bridge/scripts/el05_mit_stream_200hz_12_direct.sh`
+
+默认参数：
+
+- `TARGET_HZ=200`
+- `DURATION_S=5`（当 `LOOPS=0`）
+- MIT 固定帧：`p=0, v=0, kp=20, kd=1.5, tau=0`（`data=800080000A3D4CCD`）
+- 每个 loop 向 12 个电机各发 1 帧（共 12 帧）
+
+示例：
+
+```bash
+# 默认跑 5 秒
+bash src/trotbot_can_bridge/scripts/el05_mit_stream_200hz_12_direct.sh
+
+# 固定时长 8 秒
+DURATION_S=8 bash src/trotbot_can_bridge/scripts/el05_mit_stream_200hz_12_direct.sh
+
+# 固定循环 1000 次（优先于 DURATION_S）
+LOOPS=1000 bash src/trotbot_can_bridge/scripts/el05_mit_stream_200hz_12_direct.sh
+```
+
+频率观测建议（开两个终端）：
+
+```bash
+# 终端A：看发送帧时间戳（can0/can1 分别看）
+candump -tz can0,01800000:1FFFFF00
+candump -tz can1,01800000:1FFFFF00
+
+# 终端B：看反馈帧时间戳（根据你的反馈 ID 过滤）
+candump -tz can0
 candump -tz can1
 ```
 

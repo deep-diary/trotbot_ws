@@ -18,8 +18,11 @@
     enable_min_tx_refresh: true
     min_tx_refresh_interval_s: 0.02
     # 每电机最大发送频率上限（Hz）：防止个别链路异常高频挤占总线
+    # 与 CHAMP loop_rate=200Hz 对齐；过低会导致大量 skip_max_rate、有效命令过低频
     enable_max_tx_rate_limit: true
-    max_tx_rate_per_motor_hz: 60.0
+    max_tx_rate_per_motor_hz: 200.0
+    # /can_tx_frames 与 can_transport 订阅端一致：Reliable + 足够深度，避免 DDS 丢帧造成假 bus 失衡
+    can_tx_frames_qos_depth: 4000
 
     # 发布反馈关节角（CHAMP/URDF 关节语义，便于 RViz 对比期望 vs 实际）
     publish_feedback_joint_states: true

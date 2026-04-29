@@ -176,7 +176,10 @@ public:
       runtime_tune_topic_, 10,
       std::bind(&MotorProtocolNode::OnTuneCommand, this, std::placeholders::_1));
 
-    tx_pub_ = this->create_publisher<UInt8MultiArray>("/can_tx_frames", rclcpp::SensorDataQoS());
+    const int can_tx_qos_depth = this->declare_parameter<int>("can_tx_frames_qos_depth", 4000);
+    rclcpp::QoS qos_can_tx(static_cast<size_t>(std::max(1, can_tx_qos_depth)));
+    qos_can_tx.reliable();
+    tx_pub_ = this->create_publisher<UInt8MultiArray>("/can_tx_frames", qos_can_tx);
     feedback_pub_ = this->create_publisher<String>("/motor_feedback", 50);
     if (publish_feedback_joint_states_) {
       feedback_joint_states_pub_ = this->create_publisher<JointState>(feedback_joint_states_topic_, 10);
@@ -192,6 +195,9 @@ public:
     tx_refresh_timer_ = this->create_wall_timer(
       std::chrono::milliseconds(2),
       std::bind(&MotorProtocolNode::OnTxRefreshTimer, this));
+    tx_stats_timer_ = this->create_wall_timer(
+      std::chrono::seconds(5),
+      std::bind(&MotorProtocolNode::LogTxWindowStats, this));
 
     RCLCPP_WARN(
       this->get_logger(),
@@ -233,6 +239,7 @@ public:
 private:
   void OnTrajectory(const JointTrajectory::SharedPtr msg)
   {
+    ++traj_cb_count_window_;
     if (msg->points.empty()) {
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *this->get_clock(), 2000,
@@ -241,6 +248,7 @@ private:
     }
 
     const auto & positions = msg->points.front().positions;
+    traj_joint_count_window_ += std::min(positions.size(), DogMapper::kTemporaryIndexMap.size());
     uint32_t front_count = 0;
     uint32_t rear_count = 0;
     size_t total_sent = 0;
@@ -317,6 +325,7 @@ private:
     {
       const int64_t min_interval_ns = static_cast<int64_t>(1e9 / max_tx_rate_per_motor_hz_);
       if ((now_ns - last_tx_pub_stamp_ns_[idx]) < min_interval_ns) {
+        ++skip_max_rate_limit_window_;
         return;
       }
     }
@@ -330,6 +339,7 @@ private:
 
     const bool is_front = (route.bus == CanBus::CAN0);
     if ((is_front && !tx_enable_can0_) || (!is_front && !tx_enable_can1_)) {
+      ++skip_bus_disabled_window_;
       return;
     }
     const double use_kp = is_front ? runtime_kp_can0_ : runtime_kp_can1_;
@@ -347,10 +357,13 @@ private:
 
     auto packed = FrameCodec::Pack(frame);
     tx_pub_->publish(packed);
+    ++tx_traj_total_window_;
     if (route.bus == CanBus::CAN0) {
       ++front_count;
+      ++tx_traj_can0_window_;
     } else {
       ++rear_count;
+      ++tx_traj_can1_window_;
     }
 
     RCLCPP_DEBUG(
@@ -409,8 +422,44 @@ private:
         static_cast<float>(use_tau));
       auto packed = FrameCodec::Pack(frame);
       tx_pub_->publish(packed);
+      ++tx_refresh_total_window_;
+      if (is_front) {
+        ++tx_refresh_can0_window_;
+      } else {
+        ++tx_refresh_can1_window_;
+      }
       last_tx_pub_stamp_ns_[idx] = now_ns;
     }
+  }
+
+  void LogTxWindowStats()
+  {
+    const size_t tx_total = tx_traj_total_window_ + tx_refresh_total_window_;
+    RCLCPP_INFO(
+      this->get_logger(),
+      "MP TX window(5s): traj_cb=%zu traj_joint_targets=%zu tx_total=%zu tx_traj=%zu(can0=%zu can1=%zu) tx_refresh=%zu(can0=%zu can1=%zu) skip_max_rate=%zu skip_bus_disabled=%zu",
+      traj_cb_count_window_,
+      traj_joint_count_window_,
+      tx_total,
+      tx_traj_total_window_,
+      tx_traj_can0_window_,
+      tx_traj_can1_window_,
+      tx_refresh_total_window_,
+      tx_refresh_can0_window_,
+      tx_refresh_can1_window_,
+      skip_max_rate_limit_window_,
+      skip_bus_disabled_window_);
+
+    traj_cb_count_window_ = 0;
+    traj_joint_count_window_ = 0;
+    tx_traj_total_window_ = 0;
+    tx_traj_can0_window_ = 0;
+    tx_traj_can1_window_ = 0;
+    tx_refresh_total_window_ = 0;
+    tx_refresh_can0_window_ = 0;
+    tx_refresh_can1_window_ = 0;
+    skip_max_rate_limit_window_ = 0;
+    skip_bus_disabled_window_ = 0;
   }
 
   void OnRxFrame(const UInt8MultiArray::SharedPtr msg)
@@ -820,6 +869,16 @@ private:
   size_t joint_cmd_no_clamp_count_total_{0};
   size_t motor_cmd_clamp_count_total_{0};
   size_t motor_cmd_no_clamp_count_total_{0};
+  size_t traj_cb_count_window_{0};
+  size_t traj_joint_count_window_{0};
+  size_t tx_traj_total_window_{0};
+  size_t tx_traj_can0_window_{0};
+  size_t tx_traj_can1_window_{0};
+  size_t tx_refresh_total_window_{0};
+  size_t tx_refresh_can0_window_{0};
+  size_t tx_refresh_can1_window_{0};
+  size_t skip_max_rate_limit_window_{0};
+  size_t skip_bus_disabled_window_{0};
 
   rclcpp::Subscription<JointTrajectory>::SharedPtr traj_sub_;
   rclcpp::Subscription<UInt8MultiArray>::SharedPtr rx_sub_;
@@ -828,6 +887,7 @@ private:
   rclcpp::Publisher<String>::SharedPtr feedback_pub_;
   rclcpp::Publisher<JointState>::SharedPtr feedback_joint_states_pub_;
   rclcpp::TimerBase::SharedPtr tx_refresh_timer_;
+  rclcpp::TimerBase::SharedPtr tx_stats_timer_;
 };
 
 }  // namespace trotbot_can_bridge

@@ -2,6 +2,8 @@
   ros__parameters:
     can0_name: can0
     can1_name: can1
+    # 与 motor_protocol_node 发布端一致，避免 BEST_EFFORT 浅队列丢帧
+    can_tx_frames_qos_depth: 4000
     rx_poll_ms: 2
     max_tx_per_cycle: 8
     tx_queue_max: 2048

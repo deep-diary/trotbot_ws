@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cerrno>
 #include <cstring>
@@ -40,8 +41,11 @@ public:
     hex_rx_line_topic_ =
       this->declare_parameter<std::string>("hex_rx_line_topic", "/can_frames_rx_line");
 
+    const int can_tx_qos_depth = this->declare_parameter<int>("can_tx_frames_qos_depth", 4000);
+    rclcpp::QoS qos_can_tx(static_cast<size_t>(std::max(1, can_tx_qos_depth)));
+    qos_can_tx.reliable();
     tx_sub_ = this->create_subscription<UInt8MultiArray>(
-      "/can_tx_frames", rclcpp::SensorDataQoS(),
+      "/can_tx_frames", qos_can_tx,
       std::bind(&CanTransportNode::OnTxFrame, this, std::placeholders::_1));
     rx_pub_ = this->create_publisher<UInt8MultiArray>("/can_rx_frames", rclcpp::SensorDataQoS());
     hex_tx_line_pub_ =
