@@ -26,7 +26,9 @@ CMD_FEEDBACK=2
 CMD_ENABLE=3
 CMD_RESET=4
 CMD_SET_ZERO=6
+CMD_GET_PARAM=17
 CMD_SET_PARAM=18
+CMD_SAVE_PARAM=22
 COMM_REPORT=24    # 手册通信类型 24，即十六进制 0x18（bits 28–24）
 
 # 通信类型 24 数据（手册）：Byte6 01 开上报 / 00 关；Byte7 00
@@ -45,14 +47,17 @@ SLEEP_MS="${SLEEP_MS:-20}"
 
 # 上报周期参数（截图：0x7026 EPScan_time，uint16；1=>10ms，每+1 增加 5ms）
 PARAM_EPSCAN_TIME_HEX="7026"
+PARAM_ZERO_STA_HEX="7029"
 # 默认把主动上报频率从约100Hz降到 5Hz（减轻总线负载）
 REPORT_HZ="${REPORT_HZ:-5}"
 # 若显式给出则优先（例如 REPORT_SCAN_TIME=1 表示约10ms）
 REPORT_SCAN_TIME="${REPORT_SCAN_TIME:-}"
 # 通讯自检等待反馈超时（秒）
 CHECK_TIMEOUT_S="${CHECK_TIMEOUT_S:-0.40}"
+PARAM_READ_TIMEOUT_S="${PARAM_READ_TIMEOUT_S:-0.40}"
 # 反馈过滤掩码：固定 cmd(24..28) + motor_id/master(0..15)，忽略 mode/err(16..23)
 FEEDBACK_FILTER_MASK_HEX="1F00FFFF"
+ZERO_STA_TARGET="${ZERO_STA_TARGET:-1}"
 
 # MIT 运控默认参数（与 motor_protocol_node 现网默认保持一致）
 # 物理量范围（协议侧）：
@@ -76,6 +81,10 @@ usage() {
   reset         依次：通信类型 ${COMM_REPORT} 上报关 + 失能/停止（CMD=${CMD_RESET}）
   all           依次执行 zero → 短暂停顿 → init
   mit           12 电机发送一轮 MIT 运控帧（CMD=${CMD_CONTROL}，默认 p=0 v=0 kp=30 kd=1.5 tau=0）
+  zero_sta_read 读取参数 0x${PARAM_ZERO_STA_HEX}（通信类型 ${CMD_GET_PARAM}，打印原始应答与解析值）
+  zero_sta_set  写参数 0x${PARAM_ZERO_STA_HEX}（通信类型 ${CMD_SET_PARAM}，默认写入 ZERO_STA_TARGET=${ZERO_STA_TARGET}）
+  zero_sta_save 发送参数保存帧（通信类型 ${CMD_SAVE_PARAM}）
+  zero_sta_apply 执行 zero_sta_set -> zero_sta_save -> zero_sta_read
   check         快速链路自检：逐个电机发 set_zero 并等待反馈帧（CMD=${CMD_FEEDBACK}）
   ping          仅打印本轮电机与接口映射（不发送）
 
@@ -90,6 +99,8 @@ usage() {
   REPORT_HZ       init 时写入 EPScan_time 的目标上报频率（Hz），默认 5
   REPORT_SCAN_TIME init 时直接指定 EPScan_time（uint16），优先于 REPORT_HZ
   CHECK_TIMEOUT_S check 子命令等待单电机反馈超时（秒），默认 0.40
+  PARAM_READ_TIMEOUT_S 参数读取等待超时（秒），默认 0.40
+  ZERO_STA_TARGET zero_sta_set/zero_sta_apply 写入值（0 或 1，默认 1）
   MIT_P           MIT 目标位置 rad，默认 0
   MIT_V           MIT 目标速度 rad/s，默认 0
   MIT_KP          MIT Kp，默认 30
@@ -211,11 +222,38 @@ build_set_param_u16_data_hex() {
   printf '%02X%02X0000%02X%02X0000' "$p_lo" "$p_hi" "$v_lo" "$v_hi"
 }
 
+build_get_param_data_hex() {
+  local param_hex="$1"  # 如 7029
+  local p_lo p_hi
+  p_lo="$((16#${param_hex:2:2}))"
+  p_hi="$((16#${param_hex:0:2}))"
+  printf '%02X%02X000000000000' "$p_lo" "$p_hi"
+}
+
+build_set_param_u8_data_hex() {
+  local param_hex="$1"  # 如 7029
+  local val="$2"        # uint8 十进制
+  local p_lo p_hi v
+  p_lo="$((16#${param_hex:2:2}))"
+  p_hi="$((16#${param_hex:0:2}))"
+  v="$(( val & 0xFF ))"
+  printf '%02X%02X0000%02X000000' "$p_lo" "$p_hi" "$v"
+}
+
 set_report_scan_time() {
   local id="$1"
   local scan_time="$2"
   local data_hex
   data_hex="$(build_set_param_u16_data_hex "$PARAM_EPSCAN_TIME_HEX" "$scan_time")"
+  send_cmd "$CMD_SET_PARAM" "$id" "$data_hex"
+}
+
+set_param_u8() {
+  local id="$1"
+  local param_hex="$2"
+  local val="$3"
+  local data_hex
+  data_hex="$(build_set_param_u8_data_hex "$param_hex" "$val")"
   send_cmd "$CMD_SET_PARAM" "$id" "$data_hex"
 }
 
@@ -233,6 +271,75 @@ wait_feedback_once() {
   local filter
   filter="$(feedback_filter_hex_for_motor "$motor_id" "$MASTER")"
   timeout "$CHECK_TIMEOUT_S" candump -n 1 "${iface},${filter}" >/dev/null 2>&1
+}
+
+param_read_filter_hex_for_motor() {
+  local motor_id="$1"
+  local mast="${2:-$MASTER}"
+  local id_hex_a id_hex_b
+  id_hex_a="$(printf '%08X' "$(( (CMD_GET_PARAM << 24) | ((mast & 0xFF) << 8) | (motor_id & 0xFF) ))")"
+  id_hex_b="$(printf '%08X' "$(( (CMD_GET_PARAM << 24) | ((motor_id & 0xFF) << 8) | (mast & 0xFF) ))")"
+  printf '%s:%s,%s:%s' "$id_hex_a" "$FEEDBACK_FILTER_MASK_HEX" "$id_hex_b" "$FEEDBACK_FILTER_MASK_HEX"
+}
+
+read_param_once_raw() {
+  local motor_id="$1"
+  local iface="$2"
+  local filter
+  filter="$(param_read_filter_hex_for_motor "$motor_id" "$MASTER")"
+  timeout "$PARAM_READ_TIMEOUT_S" candump -n 1 "${iface},${filter}" 2>/dev/null
+}
+
+read_param_once_raw_with_send() {
+  local motor_id="$1"
+  local iface="$2"
+  local param_hex="$3"
+  local req_hex
+  local line_file pid line
+  req_hex="$(build_get_param_data_hex "$param_hex")"
+  line_file="$(mktemp)"
+  # 先监听再发，避免类型17应答过快导致“先发后收”丢样本。
+  timeout "$PARAM_READ_TIMEOUT_S" candump -n 6 "${iface},$(param_read_filter_hex_for_motor "$motor_id" "$MASTER")" >"$line_file" 2>/dev/null &
+  pid=$!
+  sleep_ms 5
+  send_cmd "$CMD_GET_PARAM" "$motor_id" "$req_hex"
+  wait "$pid" || true
+  line="$(awk '
+    {
+      for(i=1;i<=NF;i++){
+        if($i ~ /^[0-9A-Fa-f]{8}$/){
+          id=toupper($i);
+          # 参数读取应答常见形态：1100<MOTOR_ID>FD；过滤掉本机回环请求 1100FD<MOTOR_ID>
+          if(id ~ /^1100[0-9A-F]{2}FD$/){
+            print $0;
+            exit;
+          }
+        }
+      }
+    }' "$line_file" 2>/dev/null || true)"
+  rm -f "$line_file"
+  if [[ -n "$line" ]]; then
+    printf '%s\n' "$line"
+  fi
+}
+
+decode_param_line_u8() {
+  local line="$1"
+  local bytes=()
+  local tok
+  for tok in $line; do
+    if [[ "$tok" =~ ^[0-9A-Fa-f]{2}$ ]]; then
+      bytes+=("${tok^^}")
+    fi
+  done
+  if (( ${#bytes[@]} < 8 )); then
+    return 1
+  fi
+  local phex
+  local pval
+  phex="$(printf '0x%s%s' "${bytes[1]}" "${bytes[0]}")"     # little-endian index
+  pval="$((16#${bytes[4]}))"                                 # u8 in byte4
+  printf '%s %s\n' "$phex" "$pval"
 }
 
 build_mit_data_hex() {
@@ -399,6 +506,67 @@ cmd_mit() {
   echo "done."
 }
 
+cmd_zero_sta_read() {
+  require_cansend
+  command -v candump >/dev/null 2>&1 || {
+    echo "error: candump not found (install: sudo apt-get install -y can-utils)" >&2
+    exit 1
+  }
+  local id iface line parsed phex pval
+  echo "--- 读取 zero_sta (param=0x${PARAM_ZERO_STA_HEX}, CMD ${CMD_GET_PARAM}) ---"
+  for id in $(resolve_motor_ids); do
+    iface="$(iface_for_id "$id")"
+    line="$(read_param_once_raw_with_send "$id" "$iface" "$PARAM_ZERO_STA_HEX" || true)"
+    if [[ -z "$line" ]]; then
+      printf '[WARN] motor=%s iface=%s read timeout\n' "$id" "$iface"
+      continue
+    fi
+    parsed="$(decode_param_line_u8 "$line" || true)"
+    if [[ -n "$parsed" ]]; then
+      phex="$(awk '{print $1}' <<<"$parsed")"
+      pval="$(awk '{print $2}' <<<"$parsed")"
+      printf '[OK]   motor=%s iface=%s param=%s value_u8=%s raw="%s"\n' "$id" "$iface" "$phex" "$pval" "$line"
+    else
+      printf '[INFO] motor=%s iface=%s raw="%s"\n' "$id" "$iface" "$line"
+    fi
+    sleep_ms "$SLEEP_MS"
+  done
+  echo "done."
+}
+
+cmd_zero_sta_set() {
+  require_cansend
+  local id v
+  v="$(( ZERO_STA_TARGET + 0 ))"
+  if (( v < 0 || v > 1 )); then
+    echo "error: ZERO_STA_TARGET must be 0 or 1 (got: ${ZERO_STA_TARGET})" >&2
+    exit 1
+  fi
+  echo "--- 写入 zero_sta (param=0x${PARAM_ZERO_STA_HEX}, value=${v}, CMD ${CMD_SET_PARAM}) ---"
+  for id in $(resolve_motor_ids); do
+    set_param_u8 "$id" "$PARAM_ZERO_STA_HEX" "$v"
+    sleep_ms "$SLEEP_MS"
+  done
+  echo "done."
+}
+
+cmd_zero_sta_save() {
+  require_cansend
+  local id
+  echo "--- 保存参数 (CMD ${CMD_SAVE_PARAM}) ---"
+  for id in $(resolve_motor_ids); do
+    send_cmd "$CMD_SAVE_PARAM" "$id" "$DATA_EMPTY"
+    sleep_ms "$SLEEP_MS"
+  done
+  echo "done."
+}
+
+cmd_zero_sta_apply() {
+  cmd_zero_sta_set
+  cmd_zero_sta_save
+  cmd_zero_sta_read
+}
+
 main() {
   case "${1:-}" in
     ""|-h|--help|help) usage; exit 0 ;;
@@ -407,6 +575,10 @@ main() {
     reset) cmd_reset ;;
     all) cmd_all ;;
     mit) cmd_mit ;;
+    zero_sta_read) cmd_zero_sta_read ;;
+    zero_sta_set) cmd_zero_sta_set ;;
+    zero_sta_save) cmd_zero_sta_save ;;
+    zero_sta_apply) cmd_zero_sta_apply ;;
     check) cmd_check ;;
     ping) ping ;;
     *)

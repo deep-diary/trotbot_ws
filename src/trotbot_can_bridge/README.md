@@ -55,6 +55,10 @@ bash install/trotbot_can_bridge/share/trotbot_can_bridge/scripts/el05_motor_cans
 | `reset` | 依次「上报关」（同上帧 Byte6=`00`）+ 「失能」（CMD=4，数据全 0） |
 | `all` | `zero` → 短暂停顿 → `init` |
 | `mit` | 发送一轮 MIT 运控帧（CMD=1）。默认：`p=0`、`v=0`、`kp=20`、`kd=1.5`、`tau=0` |
+| `zero_sta_read` | 读取参数 `0x7029`（通信类型17），打印原始应答与解析 `value_u8`（若固件不回17则会超时告警） |
+| `zero_sta_set` | 写参数 `0x7029`（通信类型18，值来自 `ZERO_STA_TARGET`，默认 `1`） |
+| `zero_sta_save` | 参数保存（通信类型22，掉电保留） |
+| `zero_sta_apply` | 一键执行：`zero_sta_set` → `zero_sta_save` → `zero_sta_read` |
 | `check` | 快速链路自检：逐个电机发送 `set_zero` 并等待反馈帧（CMD=2） |
 | `ping` | 仅打印每个电机将使用的 **接口名**（不发送） |
 
@@ -71,6 +75,31 @@ bash install/trotbot_can_bridge/share/trotbot_can_bridge/scripts/el05_motor_cans
 - **`REPORT_HZ`**：`init` 时目标主动上报频率（Hz），默认 **5**（降负载）。
 - **`REPORT_SCAN_TIME`**：直接指定 `EPScan_time`（`0x7026`，uint16），优先于 `REPORT_HZ`。
 - **`CHECK_TIMEOUT_S`**：`check` 子命令等待单电机反馈超时（秒），默认 **0.40**。
+- **`PARAM_READ_TIMEOUT_S`**：`zero_sta_read` 等待读参数应答超时（秒），默认 **0.40**。
+- **`ZERO_STA_TARGET`**：`zero_sta_set/zero_sta_apply` 写入值（`0` 或 `1`，默认 `1`）。
+
+### `zero_sta(0x7029)` 说明与建议流程
+
+按 EL05 手册：
+
+- `zero_sta=0`：上电位置域 `0~2π`（负向小偏移可能被映射到接近 `2π`）
+- `zero_sta=1`：上电位置域 `-π~π`（更适合趴姿断电后的双向小偏移恢复）
+
+建议一次性执行：
+
+```bash
+# 全 12 电机：写 zero_sta=1，保存，再回读
+ZERO_STA_TARGET=1 bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh zero_sta_apply
+```
+
+也可以分步：
+
+```bash
+bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh zero_sta_read
+ZERO_STA_TARGET=1 bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh zero_sta_set
+bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh zero_sta_save
+bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh zero_sta_read
+```
 
 ### 主动上报频率（`EPScan_time=0x7026`）说明
 
