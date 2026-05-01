@@ -40,9 +40,9 @@ sudo apt-get install -y can-utils
 
 默认按键（`power_sequence.yaml` 可改）：
 
-- `L1 + R1` 长按：上电启动（`Precheck -> EnableInit -> SoftStand -> Running`）
+- `L1 + R1` **或** **`□`（Square）** 长按：上电 / `start`（`Idle`→`Precheck…`；`ProneHold`→`SoftStand`），时长用 **`start_longpress_s`**
 - `L1 + R1 + Share` 长按：下电收拢（`SoftProne -> Disable -> Idle`，与话题 `shutdown` 同语义）
-- `Circle` 长按：趴下至 **`ProneHold`**（保持使能、门禁仍开），与话题 **`prone`** 同语义
+- `Circle`（`○`）长按：趴下至 **`ProneHold`**（保持使能、门禁仍开），时长用 **`prone_longpress_s`**，与话题 **`prone`** 同语义
 
 ### 无电机使能的安全抓包模式（推荐先联调）
 

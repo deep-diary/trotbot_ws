@@ -11,14 +11,23 @@
     can_tx_frames_qos_depth: 4000
     motor_master_id: 253
 
-    # 默认按键：L1+R1 上电；L1+R1+Share 下电；Circle 快速趴下/关机趴下
+    # 默认按键（PS4/Linux 常见：□=3 ○=1）：L1+R1 或 □长按 上电/start；L1+R1+Share 下电；○长按 prone（保持使能）
+    # button_square: -1 可关闭「□ = start」
     button_l1: 4
     button_r1: 5
     button_share: 8
     button_circle: 1
+    button_square: 3
     start_longpress_s: 1.0
     shutdown_longpress_s: 1.0
     prone_longpress_s: 0.8
+
+    # 趴下/下电 SoftProne：起点 z 默认跟踪 /body_pose（与 teleop 同语义：相对 nominal_height 的增量），避免“先抬回 stand_z 再趴”
+    # 站起 SoftStand（从 ProneHold 或趴下动画末尾挂起 start）：目标 z 使用趴下前记录的 stand_resume_z（非仅 stand_z）
+    track_body_pose_height: true
+    body_pose_stale_s: 2.0
+    track_z_clamp_min: -0.5
+    track_z_clamp_max: 0.5
 
     # 启停时序（秒）
     timer_period_ms: 20

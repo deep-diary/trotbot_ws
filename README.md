@@ -182,7 +182,11 @@ ros2 topic echo /power_sequence/gate_open --once
 | `prone` | 仅在 **`Running`**：`SoftProne` 过渡到趴姿目标后进入 **`ProneHold`**，**不发 Reset、保持使能与 gate** |
 | `shutdown` | **`ProneHold`**：直接进入 **`Disable`**（全机 `Reset` 后回 `Idle`）；其余 **`Idle` / `Precheck` / `EnableInit` / `SoftStand` / `Running` / `SoftProne`**：先 **`SoftProne`**，再 **`Disable`** |
 
-**关于 `SoftProne` 的插值**：`body_pose.position.z` 在参数 **`stand_z` 与 `prone_z` 之间线性插值**（见 `power_sequence.yaml`），**不是**读取当前机身 TF 或「当前任务高度」作为起点。若当前控制目标高度与 `stand_z` 不一致，首帧可能出现目标阶跃；`PublishHoldPose` 会把 **`cmd_vel` 置零**，前进中触发时会开始刹停线速度指令，但高度仍按上述插值走。
+手柄等效：`L1+R1`（且**未**按 Share）或 **`□`（Square）** 长按 → 与 **`start`** 相同计时（`start_longpress_s`）；**`○`（Circle）** 长按 → 与 **`prone`** 相同计时（`prone_longpress_s`）。PS4 类布局下 `□` 默认 `button_square:=3`，若与你的 `sensor_msgs/Joy` 不符请改 `power_sequence.yaml`。
+
+**站立 `Running` 时再触发 `start`（话题或 □/L1+R1）**：话题会 **`ignore`**；手柄在 **`Running`** 分支**只处理**下电与 **`prone`**，**不会**执行 start，也**不会**先趴再起。
+
+**关于 `SoftProne` / `SoftStand` 的高度**：默认 **`track_body_pose_height:=true`** 时，进入 **`SoftProne`（含下电路径）** 会以**最近一次有效的 `body_pose.position.z`（与本节点发布同源话题）** 为起点插值到 `prone_z`，避免遥控压低高度后仍先抬回 `stand_z` 再趴。仅 **`prone` 路径**在趴下前会记录 **`stand_resume_z`**，随后 **`start` 站起** 时 `SoftStand` 插值到该高度而非固定 `stand_z`，减轻「站回名义高度再突然下落」的跳变。冷启动 **`Idle`→`start`** 仍用 `stand_z` 作为站起目标。跟踪超时（`body_pose_stale_s`）或无样本时回退到本节点**上次发布的 z**，再回退 `stand_z`。参数见 `power_sequence.yaml`。
 
 **`ProneHold` 与 `start`（站起）**：`ProneHold` 持续发布 **`prone_z`**（相对 CHAMP 名义高度的 z 增量，**不是**机械结构上的「全局最低点」）。从 **`ProneHold` 发 `start`** 只会进入 **`SoftStand`**：在 **`stand_z`↔`prone_z`** 上从趴姿插值回站姿，**不会**先发失能、也不会再走一遍 `EnableInit` 的使能/MIT 零帧（电机已在运行态）。若在 **`SoftProne`（趴下动画）尚未结束**时发 `start`，实现上会 **挂起**：动画结束后直接进入 **`SoftStand`**，避免第一次 `start` 被忽略、需连发两次的现象。
 

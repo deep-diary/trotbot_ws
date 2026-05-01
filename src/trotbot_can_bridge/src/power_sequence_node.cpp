@@ -71,6 +71,7 @@ public:
     button_r1_ = this->declare_parameter<int>("button_r1", 5);
     button_share_ = this->declare_parameter<int>("button_share", 8);
     button_circle_ = this->declare_parameter<int>("button_circle", 1);
+    button_square_ = this->declare_parameter<int>("button_square", 3);
 
     motor_master_id_ = this->declare_parameter<int>("motor_master_id", 253);
     init_kp_ = this->declare_parameter<double>("init_kp", 20.0);
@@ -80,6 +81,11 @@ public:
     send_set_zero_in_startup_ = this->declare_parameter<bool>("send_set_zero_in_startup", false);
     send_enable_in_startup_ = this->declare_parameter<bool>("send_enable_in_startup", true);
     send_mit_zero_in_startup_ = this->declare_parameter<bool>("send_mit_zero_in_startup", true);
+
+    track_body_pose_height_ = this->declare_parameter<bool>("track_body_pose_height", true);
+    body_pose_stale_s_ = this->declare_parameter<double>("body_pose_stale_s", 2.0);
+    track_z_clamp_min_ = this->declare_parameter<double>("track_z_clamp_min", -0.5);
+    track_z_clamp_max_ = this->declare_parameter<double>("track_z_clamp_max", 0.5);
 
     const int can_tx_depth = this->declare_parameter<int>("can_tx_frames_qos_depth", 4000);
     rclcpp::QoS tx_qos(static_cast<size_t>(std::max(1, can_tx_depth)));
@@ -92,6 +98,11 @@ public:
     joy_sub_ = this->create_subscription<Joy>(joy_topic_, 10, std::bind(&PowerSequenceNode::OnJoy, this, std::placeholders::_1));
     command_sub_ = this->create_subscription<String>(
       command_topic_, 10, std::bind(&PowerSequenceNode::OnCommand, this, std::placeholders::_1));
+    if (track_body_pose_height_) {
+      body_pose_sub_ = this->create_subscription<Pose>(
+        body_pose_topic_, rclcpp::QoS(10),
+        std::bind(&PowerSequenceNode::OnBodyPose, this, std::placeholders::_1));
+    }
 
     timer_ = this->create_wall_timer(
       std::chrono::milliseconds(std::max(5, timer_period_ms_)),
@@ -128,6 +139,7 @@ private:
     const std::string command = ToLower(msg->data);
     if (command == "start") {
       if (state_ == SequenceState::Idle) {
+        use_stand_resume_for_softstand_ = false;
         EnterState(SequenceState::Precheck);
       } else if (state_ == SequenceState::ProneHold) {
         EnterState(SequenceState::SoftStand);
@@ -184,8 +196,10 @@ private:
     const bool r1 = ButtonOn(button_r1_);
     const bool share = ButtonOn(button_share_);
     const bool circle = ButtonOn(button_circle_);
+    const bool square = (button_square_ >= 0) && ButtonOn(button_square_);
 
-    const bool start_combo = l1 && r1 && !share;
+    // □ 长按与 L1+R1（且非 Share）共用 start_longpress_s，等价话题 start
+    const bool start_combo = (l1 && r1 && !share) || square;
     const bool shutdown_combo = l1 && r1 && share;
     const bool prone_combo = circle;
 
@@ -206,6 +220,7 @@ private:
     if (state_ == SequenceState::Idle) {
       if (!start_latch_ && start_hold_s_ >= start_longpress_s_) {
         start_latch_ = true;
+        use_stand_resume_for_softstand_ = false;
         EnterState(SequenceState::Precheck);
         return;
       }
@@ -287,7 +302,8 @@ private:
           gate_open_ = true;
           PublishGate();
           const double alpha = stand_duration_s_ > 1e-6 ? std::min(1.0, elapsed_in_state_s_ / stand_duration_s_) : 1.0;
-          const double z = prone_z_ + alpha * (stand_z_ - prone_z_);
+          const double z_end = use_stand_resume_for_softstand_ ? stand_resume_z_ : stand_z_;
+          const double z = prone_z_ + alpha * (z_end - prone_z_);
           PublishHoldPose(z);
           if (alpha >= 0.999) {
             EnterState(SequenceState::Running);
@@ -298,7 +314,7 @@ private:
           gate_open_ = true;
           PublishGate();
           const double alpha = prone_duration_s_ > 1e-6 ? std::min(1.0, elapsed_in_state_s_ / prone_duration_s_) : 1.0;
-          const double z = stand_z_ + alpha * (prone_z_ - stand_z_);
+          const double z = soft_prone_z0_ + alpha * (prone_z_ - soft_prone_z0_);
           PublishHoldPose(z);
           if (alpha >= 0.999) {
             if (soft_prone_then_disable_) {
@@ -341,7 +357,50 @@ private:
   {
     pending_start_after_prone_ = false;
     soft_prone_then_disable_ = then_disable;
+    const double raw = CurrentHeightCmdZ();
+    soft_prone_z0_ = ClampTrackedZ0(raw);
+    if (!then_disable) {
+      stand_resume_z_ = soft_prone_z0_;
+      use_stand_resume_for_softstand_ = true;
+    } else {
+      use_stand_resume_for_softstand_ = false;
+    }
+    RCLCPP_INFO(
+      this->get_logger(),
+      "SoftProne anchor z0=%.4f (tracked, then_disable=%d)", soft_prone_z0_, then_disable ? 1 : 0);
     EnterState(SequenceState::SoftProne);
+  }
+
+  void OnBodyPose(const Pose::SharedPtr msg)
+  {
+    if (!std::isfinite(msg->position.z)) {
+      return;
+    }
+    last_body_pose_cmd_z_ = msg->position.z;
+    last_body_pose_receive_time_ = this->now();
+    has_body_pose_sample_ = true;
+  }
+
+  double CurrentHeightCmdZ()
+  {
+    if (!track_body_pose_height_) {
+      return stand_z_;
+    }
+    if (has_body_pose_sample_) {
+      const double age = (this->now() - last_body_pose_receive_time_).seconds();
+      if (age <= body_pose_stale_s_) {
+        return last_body_pose_cmd_z_;
+      }
+    }
+    if (has_last_published_cmd_z_) {
+      return last_published_cmd_z_;
+    }
+    return stand_z_;
+  }
+
+  double ClampTrackedZ0(double raw) const
+  {
+    return std::clamp(raw, track_z_clamp_min_, track_z_clamp_max_);
   }
 
   void EnterState(SequenceState next)
@@ -386,6 +445,9 @@ private:
 
   void PublishHoldPose(double z)
   {
+    last_published_cmd_z_ = z;
+    has_last_published_cmd_z_ = true;
+
     Pose pose;
     pose.position.x = 0.0;
     pose.position.y = 0.0;
@@ -486,6 +548,7 @@ private:
   int button_r1_{5};
   int button_share_{8};
   int button_circle_{1};
+  int button_square_{3};
 
   int motor_master_id_{253};
   double init_kp_{20.0};
@@ -495,6 +558,19 @@ private:
   bool send_set_zero_in_startup_{false};
   bool send_enable_in_startup_{true};
   bool send_mit_zero_in_startup_{true};
+
+  bool track_body_pose_height_{true};
+  double body_pose_stale_s_{2.0};
+  double track_z_clamp_min_{-0.5};
+  double track_z_clamp_max_{0.5};
+  double last_body_pose_cmd_z_{0.0};
+  rclcpp::Time last_body_pose_receive_time_;
+  bool has_body_pose_sample_{false};
+  double last_published_cmd_z_{0.0};
+  bool has_last_published_cmd_z_{false};
+  double soft_prone_z0_{0.0};
+  double stand_resume_z_{0.0};
+  bool use_stand_resume_for_softstand_{false};
 
   bool has_joy_{false};
   Joy latest_joy_;
@@ -520,6 +596,7 @@ private:
   rclcpp::Publisher<String>::SharedPtr state_pub_;
   rclcpp::Subscription<Joy>::SharedPtr joy_sub_;
   rclcpp::Subscription<String>::SharedPtr command_sub_;
+  rclcpp::Subscription<Pose>::SharedPtr body_pose_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
