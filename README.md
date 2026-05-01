@@ -1,5 +1,7 @@
 # trotbot_ws
 
+协作向文档（需求 / 架构 / 问题 / 运行入口摘要）：[`docs/trotbot/README.md`](docs/trotbot/README.md)；包内逐步操作：[`src/trotbot/本地运行指南.md`](src/trotbot/本地运行指南.md)；CAN 桥与 `power_sequence` 细节：[`src/trotbot_can_bridge/README.md`](src/trotbot_can_bridge/README.md)。
+
 ## 重新编译（工作空间根目录执行）
 
 先加载 ROS 2 环境（以 Humble 为例，按你本机发行版修改）：
@@ -381,6 +383,7 @@ flowchart LR
   D --> F["/can_rx_frames<br/>std_msgs/msg/UInt8MultiArray(15B)"]
   F --> B
   B --> G["/motor_feedback<br/>std_msgs/msg/String"]
+  B --> H["/joint_states_feedback<br/>sensor_msgs/msg/JointState"]
 ```
 
 ### 2) 端到端时序 Mermaid 图
@@ -405,13 +408,14 @@ sequenceDiagram
   Tx->>Proto: 发布 /can_rx_frames\n(UInt8MultiArray, 15B)
   Proto->>Proto: 反馈解码(angle/speed/torque/temp/err)
   Proto->>Ctrl: 发布 /motor_feedback\n(String)
+  Proto->>Proto: 定时发布 /joint_states_feedback\n(JointState, CHAMP 顺序)
 ```
 
 ### 3) 节点收发关系（按当前实现）
 
 | 节点 | 订阅 Topic | 发布 Topic | 说明 |
 |---|---|---|---|
-| `motor_protocol_node` | `/joint_group_effort_controller/joint_trajectory` (`trajectory_msgs/msg/JointTrajectory`)、`/can_rx_frames` (`std_msgs/msg/UInt8MultiArray`) | `/can_tx_frames` (`std_msgs/msg/UInt8MultiArray`)、`/motor_feedback` (`std_msgs/msg/String`) | MIT 编码/解码，关节映射与参数（`kp/kd/joint_signs/joint_offsets_rad`） |
+| `motor_protocol_node` | `/joint_group_effort_controller/joint_trajectory` (`trajectory_msgs/msg/JointTrajectory`)、`/can_rx_frames` (`std_msgs/msg/UInt8MultiArray`) | `/can_tx_frames`、`/motor_feedback`、**`/joint_states_feedback`**（`sensor_msgs/msg/JointState`，定时 **`feedback_joint_states_timer_hz`** + CAN 缓存） | MIT 编码/解码；`enable_rx_decode_log` 仅影响字符串日志，不关闭反馈解析 |
 | `can_transport_node` | `/can_tx_frames` (`std_msgs/msg/UInt8MultiArray`) | `/can_rx_frames` (`std_msgs/msg/UInt8MultiArray`) | 双通道 SocketCAN 收发（`can0/can1`），带发送队列、重试与 5 秒统计 |
 
 ### 4) Topic 消息类型与“实际消息”示例
@@ -466,7 +470,14 @@ data: [1, 1, 8, 0x01, 0x7f, 0xff, 0x35, 117, 75, 127, 255, 15, 92, 76, 204]
 bus=1 motor=53 mode=1 angle=0.123 speed=-0.045 torque=0.210 temp=36 err=0
 ```
 
-#### 4.4 单行十六进制可读输出：`/can_frames_tx_line`、`/can_frames_rx_line`（可选）
+#### 4.4 CHAMP 反馈关节态：`/joint_states_feedback`
+
+消息类型：`sensor_msgs/msg/JointState`  
+作用：将 EL05 反馈角反解到 CHAMP/URDF 关节名顺序，供 **`robot_state_publisher_feedback`**（TF 前缀 `fb/`）与 RViz **`RobotModelFeedback`**。  
+发布节奏：参数 **`feedback_joint_states_timer_hz`**（默认约 50Hz）定时发布；数值在 CAN 反馈到达时更新缓存。  
+与 **`enable_rx_decode_log`**：关闭后者仍会解码并更新反馈角，仅减少 `/motor_feedback` 与解码 INFO（见 `docs/trotbot/开发问题跟踪.md` ISSUE-0005）。
+
+#### 4.5 单行十六进制可读输出：`/can_frames_tx_line`、`/can_frames_rx_line`（可选）
 
 `/can_tx_frames` / `/can_rx_frames` 仍是 `UInt8MultiArray`（15 字节打包），`ros2 topic echo` 默认按十进制列出 `data`，可读性一般。
 

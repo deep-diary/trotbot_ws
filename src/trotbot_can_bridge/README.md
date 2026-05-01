@@ -454,11 +454,16 @@ ros2 topic pub --once /mit_gains_cmd std_msgs/msg/String "{data: 'reset=1'}"
 - 不出现持续高频抖振或明显发热。
 - 误差统计（`MIT tracking abs_err`）随调参趋于下降。
 
-## 第二阶段 Backlog（当前未实现）
+## 反馈 JointState 与 `enable_rx_decode_log`（motor_protocol_node）
 
-- 启动姿态平滑过渡：趴姿到站立插值/限速，减小启动突变。
-- RViz 双模型：同时显示期望姿态与电机反馈姿态。
-- 发送前限位保护：按 URDF 与电机映射约束关节目标，避免机械越界。
+- **`/joint_states_feedback`**：`SensorDataQoS`，CHAMP 关节名顺序；CAN 回调更新内部缓存，**`feedback_joint_states_timer_hz`**（默认 50，见 `control_gains.yaml`）定时发布，供 `robot_state_publisher_feedback` 与 RViz **`RobotModelFeedback`**。
+- **`enable_rx_decode_log`**：**仅**控制 `/motor_feedback` 字符串与解码路径上的 INFO 节流；**不**关闭 RX 解析与反馈角缓存（见 `开发问题跟踪.md` ISSUE-0005）。
+
+## 仍待增强的 Backlog（非阻塞当前实机基线）
+
+- **`cmd_joint_states`**：与 `/joint_states` 并行的“纯指令态”可视化（双模型现以指令 `/joint_states` + 反馈 `/joint_states_feedback` 为主）。
+- **结构化反馈话题**：速度/力矩/状态字统一消息（对应需求 RQ-012）。
+- **`safety_manager_node`**：急停与超时门禁与 `power_sequence` 的统一服务化封装。
 
 应看到 `id=0x01xxxx0D`（CMD=1，末字节为 motor_id），`data` 为 8 字节 MIT 控制量。
 
