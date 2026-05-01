@@ -36,6 +36,60 @@ sudo apt-get install -y can-utils
 
 `/can_tx_frames`（`motor_protocol_node` → `can_transport_node`）默认使用 **Reliable + `KeepLast(can_tx_frames_qos_depth)`**（深度默认 **4000**，与 `control_gains.yaml` / `bridge.yaml` 一致），避免高频下发时 **DDS 丢帧**导致总线统计假象（ISSUE-0002）。
 
+`can_bridge.launch.py` 现默认同时启动 `power_sequence_node`（可用 `use_power_sequence:=false` 关闭）。该节点用于遥控上/下电编排：发布 `/power_sequence/gate_open` 控制轨迹门禁，并在启停阶段发布 `body_pose` 做 z 轴软升降。
+
+默认按键（`power_sequence.yaml` 可改）：
+
+- `L1 + R1` 长按：上电启动（`Precheck -> EnableInit -> SoftStand -> Running`）
+- `L1 + R1 + Share` 长按：下电收拢（`SoftProne -> Disable -> Idle`，与话题 `shutdown` 同语义）
+- `Circle` 长按：趴下至 **`ProneHold`**（保持使能、门禁仍开），与话题 **`prone`** 同语义
+
+### 无电机使能的安全抓包模式（推荐先联调）
+
+可以在启动时关闭“上电使能”与“初始化 MIT 零位帧”，这样可先验证状态机、话题和 CAN 报文链路，避免电机动作带来结构风险。
+
+```bash
+ros2 launch trotbot trotbot_basic.launch.py \
+  use_can_bridge:=true \
+  use_teleop:=true \
+  use_joystick:=true \
+  use_xterm:=false \
+  rviz:=false \
+  use_power_sequence:=true \
+  power_sequence_file:=/home/cat/trotbot_ws/src/trotbot_can_bridge/config/power_sequence.yaml
+```
+
+然后单独覆写参数（或直接改 `power_sequence.yaml`）：
+
+```bash
+# 建议联调时先设为 false，确认逻辑后再打开
+send_enable_in_startup: false
+send_mit_zero_in_startup: false
+```
+
+### 无遥控器触发启停（话题指令）
+
+`power_sequence_node` 现支持订阅 `/power_sequence/command`（`std_msgs/String`）：
+
+- `start`：`Idle` 上电流程；**`ProneHold`** 时再次站起（`SoftStand -> Running`）
+- `prone`：仅 **`Running`** → `SoftProne` → **`ProneHold`**（不发 Reset）
+- `shutdown`：`ProneHold` 直接 `Disable`；其余允许态先 `SoftProne` 再 `Disable`（见根 `README.md` 2a-1 表）
+
+示例：
+
+```bash
+ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'start'}"
+ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'prone'}"
+ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'shutdown'}"
+```
+
+状态观测：
+
+```bash
+ros2 topic echo /power_sequence/state
+ros2 topic echo /power_sequence/gate_open
+```
+
 ### 用法
 
 ```bash

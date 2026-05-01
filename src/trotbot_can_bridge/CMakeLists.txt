@@ -6,6 +6,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -40,10 +41,21 @@ ament_target_dependencies(motor_protocol_node
   trajectory_msgs
 )
 
+add_executable(power_sequence_node
+  src/power_sequence_node.cpp
+)
+ament_target_dependencies(power_sequence_node
+  geometry_msgs
+  rclcpp
+  sensor_msgs
+  std_msgs
+)
+
 install(TARGETS
   socketcan_driver
   can_transport_node
   motor_protocol_node
+  power_sequence_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}

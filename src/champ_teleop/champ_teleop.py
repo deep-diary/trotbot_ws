@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import math
 import select
+import time
 import sys
 import termios
 import threading
@@ -19,6 +20,7 @@ from geometry_msgs.msg import Pose as Pose
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
+from std_msgs.msg import String
 
 def quaternion_from_euler(roll, pitch, yaw):
     """
@@ -48,6 +50,8 @@ class Teleop(Node):
         self.pose_publisher = self.create_publisher(Pose, 'body_pose', 1)
         
         self.joy_subscriber = self.create_subscription(Joy, 'joy', self.joy_callback, 1)
+        self.power_state_subscriber = self.create_subscription(
+            String, '/power_sequence/state', self.power_state_callback, 10)
 
         self.declare_parameter("gait/swing_height", 0)
         self.declare_parameter("gait/nominal_height", 0)
@@ -72,6 +76,8 @@ class Teleop(Node):
         self._kb_body_z = 0.0
         self._joy_height_inc_prev = False
         self._joy_height_dec_prev = False
+        self.declare_parameter("block_body_pose_until_running", True)
+        self._power_sequence_state = "Idle"
 
         self.msg = """
 Reading from the keyboard  and Publishing to Twist!
@@ -139,7 +145,12 @@ CTRL-C to quit
         self._spin_thread = threading.Thread(target=self._executor.spin, daemon=True)
         self._spin_thread.start()
 
-        self.poll_keys()
+        self._has_tty = sys.stdin.isatty()
+        if self._has_tty:
+            self.poll_keys()
+        else:
+            self.get_logger().warn("stdin is not a TTY, running joystick-only mode (keyboard disabled)")
+            self.spin_headless()
 
     def _publish_keyboard_body_pose(self):
         """键盘专用：仅更新 height（与 joy 中 body_pose.position.z 语义一致）；姿态为单位四元数。"""
@@ -174,6 +185,9 @@ CTRL-C to quit
         twist.angular.y = 0.0
         twist.angular.z = (not data.buttons[4]) * data.axes[0] * self.turn
         self.velocity_publisher.publish(twist)
+
+        if self.get_parameter("block_body_pose_until_running").value and self._power_sequence_state != "Running":
+            return
 
         body_pose_lite = PoseLite()
         # champ_msgs/Pose 在 rclpy 中对 float 字段做严格校验，禁止写 int（如 0）
@@ -224,6 +238,9 @@ CTRL-C to quit
         body_pose.orientation.z = quaternion[3]
 
         self.pose_publisher.publish(body_pose)
+
+    def power_state_callback(self, msg):
+        self._power_sequence_state = msg.data
 
     def poll_keys(self):
         self.settings = termios.tcgetattr(sys.stdin)
@@ -304,6 +321,29 @@ CTRL-C to quit
 
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.settings)
 
+            self._executor.shutdown()
+            if self._spin_thread.is_alive():
+                self._spin_thread.join(timeout=2.0)
+
+    def spin_headless(self):
+        """No-TTY mode: keep node alive for /joy callbacks."""
+        try:
+            while rclpy.ok():
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            twist = Twist()
+            twist.linear.x = 0.0
+            twist.linear.y = 0.0
+            twist.linear.z = 0.0
+            twist.angular.x = 0.0
+            twist.angular.y = 0.0
+            twist.angular.z = 0.0
+            try:
+                self.velocity_publisher.publish(twist)
+            except Exception:
+                pass
             self._executor.shutdown()
             if self._spin_thread.is_alive():
                 self._spin_thread.join(timeout=2.0)

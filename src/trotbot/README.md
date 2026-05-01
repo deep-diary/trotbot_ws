@@ -32,6 +32,18 @@ ros2 launch trotbot trotbot_teleop.launch.py use_joystick:=true
 ros2 run rviz2 rviz2 -d src/trotbot/config/trotbot.rviz
 ```
 
+One-command variant (core + CAN bridge + teleop, optional RViz):
+
+```bash
+ros2 launch trotbot trotbot_basic.launch.py \
+  use_can_bridge:=true \
+  use_teleop:=true \
+  use_joystick:=true \
+  use_xterm:=false \
+  rviz:=false \
+  gait_config_file:=gait_minidog.yaml
+```
+
 > **Note**: The RViz configuration file `src/trotbot/config/trotbot.rviz` needs to be created for visualization.
 
 ## 📋 Table of Contents

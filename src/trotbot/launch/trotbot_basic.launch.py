@@ -23,7 +23,7 @@
 #   # 同时打开 RViz（需 DISPLAY；加载 share/trotbot/rviz/trotbot.rviz；RobotModel 用 /robot_description 话题）：
 #   ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true rviz:=true
 #   ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true rviz:=true rviz_config:=/path/to/custom.rviz
-#   ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true rviz:=true description_file:=minidog_champ.urdf.xacro gait_config_file:=gait_minidog.yaml
+#   默认 description_file=minidog_champ.urdf.xacro、gait_config_file=gait_minidog.yaml；旧款可显式传 trotbot.urdf.xacro / gait.yaml
 #   ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.1}}" --once
 
 from launch import LaunchDescription
@@ -61,6 +61,34 @@ def generate_launch_description():
         description="是否启动 MIT-only 双节点 CAN bridge",
     )
 
+    use_teleop = LaunchConfiguration("use_teleop")
+    use_teleop_launch_arg = DeclareLaunchArgument(
+        name="use_teleop",
+        default_value="false",
+        description="是否在 basic launch 内联启动 trotbot_teleop（键盘/手柄）",
+    )
+
+    use_joystick = LaunchConfiguration("use_joystick")
+    use_joystick_launch_arg = DeclareLaunchArgument(
+        name="use_joystick",
+        default_value="true",
+        description="use_teleop=true 时，是否启用手柄输入（传给 trotbot_teleop）",
+    )
+
+    joystick_dev = LaunchConfiguration("joystick_dev")
+    joystick_dev_launch_arg = DeclareLaunchArgument(
+        name="joystick_dev",
+        default_value="/dev/input/js0",
+        description="use_teleop=true 时的手柄设备路径（传给 trotbot_teleop）",
+    )
+
+    use_xterm = LaunchConfiguration("use_xterm")
+    use_xterm_launch_arg = DeclareLaunchArgument(
+        name="use_xterm",
+        default_value="false",
+        description="use_teleop=true 时，是否用 xterm 启动键盘遥控（桌面可设 true）",
+    )
+
     rviz = LaunchConfiguration("rviz")
     rviz_launch_arg = DeclareLaunchArgument(
         name="rviz",
@@ -81,15 +109,15 @@ def generate_launch_description():
     description_file = LaunchConfiguration("description_file")
     description_file_launch_arg = DeclareLaunchArgument(
         name="description_file",
-        default_value="trotbot.urdf.xacro",
-        description="URDF/xacro 文件名，位于 share/trotbot/urdf/，与 champ 控制器共用（如 minidog_champ.urdf.xacro）",
+        default_value="minidog_champ.urdf.xacro",
+        description="URDF/xacro 文件名，位于 share/trotbot/urdf/；实机 MIT/CHAMP 默认 minidog（旧款整机可显式传 trotbot.urdf.xacro）",
     )
 
     gait_config_file = LaunchConfiguration("gait_config_file")
     gait_config_file_launch_arg = DeclareLaunchArgument(
         name="gait_config_file",
-        default_value="gait.yaml",
-        description="Champ 步态 yaml 文件名，位于 share/trotbot/config/champ/（Minidog 建议 gait_minidog.yaml）",
+        default_value="gait_minidog.yaml",
+        description="Champ 步态 yaml 文件名，位于 share/trotbot/config/champ/；与 minidog 描述默认配套（旧配置可传 gait.yaml）",
     )
 
     description_path = PathJoinSubstitution(
@@ -183,11 +211,29 @@ def generate_launch_description():
         condition=IfCondition(use_can_bridge),
     )
 
+    # Optional: include teleop in one command
+    teleop_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([trotbot_package, "launch", "trotbot_teleop.launch.py"])
+        ),
+        launch_arguments={
+            "use_sim_time": use_sim_time,
+            "use_joystick": use_joystick,
+            "joystick_dev": joystick_dev,
+            "use_xterm": use_xterm,
+        }.items(),
+        condition=IfCondition(use_teleop),
+    )
+
     return LaunchDescription([
         # Launch arguments
         use_sim_time_launch_arg,
         has_imu_launch_arg,
         use_can_bridge_launch_arg,
+        use_teleop_launch_arg,
+        use_joystick_launch_arg,
+        joystick_dev_launch_arg,
+        use_xterm_launch_arg,
         rviz_launch_arg,
         rviz_config_launch_arg,
         description_file_launch_arg,
@@ -196,6 +242,7 @@ def generate_launch_description():
         # Core TrotBot functionality
         champ_controllers_launch,    # Champ quadruped controller + state estimator
         can_bridge_launch,           # MIT-only dual-node CAN bridge
+        teleop_launch,               # Optional teleop include (keyboard/joystick)
         robot_state_publisher_node,
         robot_state_publisher_feedback_node,
         feedback_tf_bridge_node,

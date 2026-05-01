@@ -12,6 +12,11 @@
 # - Y/Triangle/Y Button (button 3): Deadman/safety button
 # - L1/LB (button 4): Strafe mode enable
 # - R1/RB (button 5): Pose control mode
+#
+# Power sequence combo (handled by trotbot_can_bridge/power_sequence_node):
+# - L1 + R1 长按: 上电启动流程
+# - L1 + R1 + Share 长按: 下电收拢流程
+# - Circle 长按: 快速趴下并失能
 
 joy_teleop:
   ros__parameters:

@@ -150,6 +150,44 @@ ros2 run trotbot_can_bridge can_transport_node --ros-args \
   --params-file /home/cat/trotbot_ws/src/trotbot_can_bridge/config/bridge.yaml
 ```
 
+### 2a-1) `power_sequence`：话题手动触发（无手柄 / 桌面调试）
+
+当 `can_bridge.launch.py` 默认拉起 **`power_sequence_node`**（或整机 `use_can_bridge:=true`）时，除手柄组合键外，可直接向 **`/power_sequence/command`** 发 **`std_msgs/msg/String`**，用于上电流程、趴下、下电（与 `power_sequence_node` 内建指令一致，大小写不敏感）：
+
+```bash
+# 上电 / 启动流程（Idle 等允许状态下才会进入；否则节点会打 ignore 日志）
+ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'start'}"
+
+# 趴下（在允许状态下触发）
+ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'prone'}"
+
+# 下电流程
+ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'shutdown'}"
+```
+
+执行前请 **`source install/setup.bash`**，且 **`power_sequence_node` 已在运行**。观察状态可配合：
+
+```bash
+ros2 topic echo /power_sequence/state --once
+ros2 topic echo /power_sequence/gate_open --once
+```
+
+说明：若当前状态机不允许该指令，节点会忽略并输出 `ignore command=...`；未知字符串会提示 `supported: start/prone/shutdown`。
+
+**指令语义（与 `power_sequence_node` 一致）**
+
+| 指令 | 作用概要 |
+|------|----------|
+| `start` | `Idle` → 上电站立流程；**`ProneHold`（已趴下且仍使能）** → 再次进入 `SoftStand` 站起 |
+| `prone` | 仅在 **`Running`**：`SoftProne` 过渡到趴姿目标后进入 **`ProneHold`**，**不发 Reset、保持使能与 gate** |
+| `shutdown` | **`ProneHold`**：直接进入 **`Disable`**（全机 `Reset` 后回 `Idle`）；其余 **`Idle` / `Precheck` / `EnableInit` / `SoftStand` / `Running` / `SoftProne`**：先 **`SoftProne`**，再 **`Disable`** |
+
+**关于 `SoftProne` 的插值**：`body_pose.position.z` 在参数 **`stand_z` 与 `prone_z` 之间线性插值**（见 `power_sequence.yaml`），**不是**读取当前机身 TF 或「当前任务高度」作为起点。若当前控制目标高度与 `stand_z` 不一致，首帧可能出现目标阶跃；`PublishHoldPose` 会把 **`cmd_vel` 置零**，前进中触发时会开始刹停线速度指令，但高度仍按上述插值走。
+
+**`ProneHold` 与 `start`（站起）**：`ProneHold` 持续发布 **`prone_z`**（相对 CHAMP 名义高度的 z 增量，**不是**机械结构上的「全局最低点」）。从 **`ProneHold` 发 `start`** 只会进入 **`SoftStand`**：在 **`stand_z`↔`prone_z`** 上从趴姿插值回站姿，**不会**先发失能、也不会再走一遍 `EnableInit` 的使能/MIT 零帧（电机已在运行态）。若在 **`SoftProne`（趴下动画）尚未结束**时发 `start`，实现上会 **挂起**：动画结束后直接进入 **`SoftStand`**，避免第一次 `start` 被忽略、需连发两次的现象。
+
+**关于 `ros2 topic pub ... Waiting for at least 1 matching subscription(s)...`**：这是 **ROS 2 CLI 在等 DDS 发现订阅者**（`power_sequence_node` 未起来或 discovery 慢），与机体是否站立**无因果关系**；有/无这行日志都不应作为「站得好不好」的判断依据。
+
 ### 2b) `cansend`：电机主动上报（EL05 通信类型 24）
 
 依赖 **`can-utils`**（若未安装：`sudo apt-get install -y can-utils`）。请先按上一节把对应接口配置为 **1Mbps** 并已 **`up`**。
@@ -216,8 +254,23 @@ source /opt/ros/humble/setup.bash
 cd /home/cat/trotbot_ws
 colcon build --packages-select trotbot_can_bridge trotbot --symlink-install
 source install/setup.bash
-ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true description_file:=minidog_champ.urdf.xacro gait_config_file:=gait_minidog.yaml rviz:=true
-```viz
+ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true rviz:=true
+```
+
+默认已使用 **`minidog_champ.urdf.xacro`** 与 **`gait_minidog.yaml`**（与 `trotbot_basic.launch.py` / `champ_controllers.launch.py` 一致）。若需旧款 `trotbot.urdf.xacro` 整机，请显式传入：
+
+`description_file:=trotbot.urdf.xacro gait_config_file:=gait.yaml`
+
+推荐一条命令直接带起 `can_bridge + teleop`（便于单终端联调；URDF/步态已随上条默认，无需再写）：
+
+```bash
+ros2 launch trotbot trotbot_basic.launch.py \
+  use_can_bridge:=true \
+  use_teleop:=true \
+  use_joystick:=true \
+  use_xterm:=false \
+  rviz:=false
+```
 
 ### 4) 遥控：键盘 / PS4 手柄（可选）
 

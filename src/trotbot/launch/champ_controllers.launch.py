@@ -47,14 +47,14 @@ def generate_launch_description():
 
     description_file_launch_arg = DeclareLaunchArgument(
         name="description_file",
-        default_value="trotbot.urdf.xacro",
-        description="URDF/xacro 文件名，位于 share/trotbot/urdf/（如 minidog_champ.urdf.xacro）",
+        default_value="minidog_champ.urdf.xacro",
+        description="URDF/xacro 文件名，位于 share/trotbot/urdf/；默认 minidog（旧款整机可传 trotbot.urdf.xacro）",
     )
 
     gait_config_file_launch_arg = DeclareLaunchArgument(
         name="gait_config_file",
-        default_value="gait.yaml",
-        description="Champ 步态参数文件名，位于 share/trotbot/config/champ/（Minidog 可用 gait_minidog.yaml）",
+        default_value="gait_minidog.yaml",
+        description="Champ 步态参数文件名，位于 share/trotbot/config/champ/；默认与 minidog 配套（旧配置可传 gait.yaml）",
     )
 
     quadruped_controller = Node(

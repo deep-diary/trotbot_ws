@@ -1,0 +1,44 @@
+/**:
+  ros__parameters:
+    joy_topic: /joy
+    body_pose_topic: body_pose
+    cmd_vel_topic: cmd_vel
+    tx_topic: /can_tx_frames
+    gate_topic: /power_sequence/gate_open
+    state_topic: /power_sequence/state
+    command_topic: /power_sequence/command
+
+    can_tx_frames_qos_depth: 4000
+    motor_master_id: 253
+
+    # 默认按键：L1+R1 上电；L1+R1+Share 下电；Circle 快速趴下/关机趴下
+    button_l1: 4
+    button_r1: 5
+    button_share: 8
+    button_circle: 1
+    start_longpress_s: 1.0
+    shutdown_longpress_s: 1.0
+    prone_longpress_s: 0.8
+
+    # 启停时序（秒）
+    timer_period_ms: 20
+    precheck_duration_s: 0.20
+    init_hold_duration_s: 0.35
+    stand_duration_s: 2.50
+    prone_duration_s: 2.50
+
+    # body_pose.position.z 目标（相对 nominal_height 的增量）
+    stand_z: 0.0
+    prone_z: -0.2
+
+    # 启动默认不重设零位（zero_sta 已切换为 ±π）
+    send_set_zero_in_startup: false
+    send_enable_in_startup: true
+    send_mit_zero_in_startup: true
+
+    # MIT 首帧参数
+    init_kp: 20.0
+    init_kd: 1.5
+    init_velocity: 0.0
+    init_tau: 0.0
+

@@ -23,10 +23,15 @@
     max_tx_rate_per_motor_hz: 200.0
     # /can_tx_frames 与 can_transport 订阅端一致：Reliable + 足够深度，避免 DDS 丢帧造成假 bus 失衡
     can_tx_frames_qos_depth: 4000
+    # 启动流程门禁：true 时，需收到 /power_sequence/gate_open=true 才会透传轨迹发送
+    enable_power_sequence_gate: true
+    power_sequence_gate_topic: /power_sequence/gate_open
 
     # 发布反馈关节角（CHAMP/URDF 关节语义，便于 RViz 对比期望 vs 实际）
     publish_feedback_joint_states: true
     feedback_joint_states_topic: /joint_states_feedback
+    # 定时发布反馈 JointState（Hz）；与 CAN 帧解耦，门禁未开/无总线反馈时仍供 RViz robot_state_publisher_feedback 用。≤0 则关闭定时器（不推荐）。
+    feedback_joint_states_timer_hz: 50.0
 
     # 启动平滑与发送限速（减少趴姿->站立突变）
     enable_startup_smoothing: true
@@ -65,6 +70,7 @@
     # derive_motor_limits_from_joint_cmd: false
     # joint_mit_min_rad: [-0.3, -0.6, -2.26, -0.3, -1.4, 0.0, -0.3, -0.6, -2.26, -0.3, -1.4, 0.0]
     # joint_mit_max_rad: [0.3, 1.4, 0.0, 0.3, 0.6, 2.26, 0.3, 1.4, 0.0, 0.3, 0.6, 2.26]
+    # 仅控制 RX 解码字符串话题与 INFO 日志；为 false 时仍会解析反馈并发布 /joint_states_feedback（供 RViz RobotModelFeedback）
     enable_rx_decode_log: true
     prefer_joint_name_mapping: true
     # 观测：motor_protocol 发布 /mit_motor_position_rad (sensor_msgs/JointState)，position 为 MIT 帧内弧度 θ_mit=sign*θ_champ+offset；name 与 CHAMP 关节名同序。电机 ID 11–63 见 dog_mapper 注释。

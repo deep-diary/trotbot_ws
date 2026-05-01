@@ -12,6 +12,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/u_int8_multi_array.hpp"
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
@@ -21,6 +22,7 @@
 
 using trajectory_msgs::msg::JointTrajectory;
 using sensor_msgs::msg::JointState;
+using std_msgs::msg::Bool;
 using std_msgs::msg::String;
 using std_msgs::msg::UInt8MultiArray;
 
@@ -104,6 +106,7 @@ public:
     publish_feedback_joint_states_ = this->declare_parameter<bool>("publish_feedback_joint_states", true);
     feedback_joint_states_topic_ = this->declare_parameter<std::string>(
       "feedback_joint_states_topic", "/joint_states_feedback");
+    feedback_joint_states_timer_hz_ = this->declare_parameter<double>("feedback_joint_states_timer_hz", 50.0);
     use_joint_cmd_limits_ = this->declare_parameter<bool>("use_joint_cmd_limits", true);
     joint_cmd_min_rad_ = this->declare_parameter<std::vector<double>>(
       "joint_cmd_min_rad", std::vector<double>(12, -3.14));
@@ -128,6 +131,8 @@ public:
     feedback_fresh_timeout_s_ = this->declare_parameter<double>("feedback_fresh_timeout_s", 0.30);
     enable_rx_decode_log_ = this->declare_parameter<bool>("enable_rx_decode_log", true);
     prefer_joint_name_mapping_ = this->declare_parameter<bool>("prefer_joint_name_mapping", true);
+    enable_power_sequence_gate_ = this->declare_parameter<bool>("enable_power_sequence_gate", true);
+    power_sequence_gate_topic_ = this->declare_parameter<std::string>("power_sequence_gate_topic", "/power_sequence/gate_open");
     tx_enable_can0_ = this->declare_parameter<bool>("tx_enable_can0", true);
     tx_enable_can1_ = this->declare_parameter<bool>("tx_enable_can1", true);
     enable_min_tx_refresh_ = this->declare_parameter<bool>("enable_min_tx_refresh", true);
@@ -175,6 +180,11 @@ public:
     tune_sub_ = this->create_subscription<String>(
       runtime_tune_topic_, 10,
       std::bind(&MotorProtocolNode::OnTuneCommand, this, std::placeholders::_1));
+    if (enable_power_sequence_gate_) {
+      gate_sub_ = this->create_subscription<Bool>(
+        power_sequence_gate_topic_, 10,
+        std::bind(&MotorProtocolNode::OnPowerGate, this, std::placeholders::_1));
+    }
 
     const int can_tx_qos_depth = this->declare_parameter<int>("can_tx_frames_qos_depth", 4000);
     rclcpp::QoS qos_can_tx(static_cast<size_t>(std::max(1, can_tx_qos_depth)));
@@ -182,7 +192,14 @@ public:
     tx_pub_ = this->create_publisher<UInt8MultiArray>("/can_tx_frames", qos_can_tx);
     feedback_pub_ = this->create_publisher<String>("/motor_feedback", 50);
     if (publish_feedback_joint_states_) {
-      feedback_joint_states_pub_ = this->create_publisher<JointState>(feedback_joint_states_topic_, 10);
+      feedback_joint_states_pub_ = this->create_publisher<JointState>(
+        feedback_joint_states_topic_, rclcpp::SensorDataQoS());
+      if (feedback_joint_states_timer_hz_ > 1e-3) {
+        const int64_t period_ns = static_cast<int64_t>(1e9 / feedback_joint_states_timer_hz_);
+        feedback_js_timer_ = this->create_wall_timer(
+          std::chrono::nanoseconds(period_ns),
+          std::bind(&MotorProtocolNode::OnFeedbackJointStatesTimer, this));
+      }
     }
 
     if (publish_mit_mapped_) {
@@ -207,6 +224,14 @@ public:
       this->get_logger(),
       "Runtime MIT tuning topic: %s (example: 'scope=all kp=25 kd=1.8 tau=0.3' or 'scope=rear tau=0.6' or 'reset=1')",
       runtime_tune_topic_.c_str());
+    if (enable_power_sequence_gate_) {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "Power sequence gate enabled: waiting gate_open on topic '%s' before forwarding trajectory",
+        power_sequence_gate_topic_.c_str());
+    } else {
+      RCLCPP_INFO(this->get_logger(), "Power sequence gate disabled, trajectory forwarding always enabled");
+    }
     ResetRuntimeTuning();
     last_commanded_mit_rad_.fill(std::numeric_limits<double>::quiet_NaN());
     last_feedback_champ_rad_.fill(std::numeric_limits<double>::quiet_NaN());
@@ -276,6 +301,10 @@ private:
       } else if (has_latest_input_[i]) {
         target = latest_input_champ_rad_[i];
       } else {
+        continue;
+      }
+      if (enable_power_sequence_gate_ && !power_gate_open_) {
+        ++skip_power_gate_window_;
         continue;
       }
       SendMitFrame(route.value(), target, front_count, rear_count, &mapped_rad);
@@ -389,6 +418,9 @@ private:
     if (!enable_min_tx_refresh_ || min_tx_refresh_interval_s_ <= 1e-6) {
       return;
     }
+    if (enable_power_sequence_gate_ && !power_gate_open_) {
+      return;
+    }
     const int64_t now_ns = this->now().nanoseconds();
     const int64_t refresh_ns = static_cast<int64_t>(min_tx_refresh_interval_s_ * 1e9);
     for (const auto & route : DogMapper::kTemporaryIndexMap) {
@@ -449,6 +481,11 @@ private:
       tx_refresh_can1_window_,
       skip_max_rate_limit_window_,
       skip_bus_disabled_window_);
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000,
+      "MP gate window(5s): gate_open=%d skip_gate=%zu",
+      power_gate_open_ ? 1 : 0,
+      skip_power_gate_window_);
 
     traj_cb_count_window_ = 0;
     traj_joint_count_window_ = 0;
@@ -460,14 +497,24 @@ private:
     tx_refresh_can1_window_ = 0;
     skip_max_rate_limit_window_ = 0;
     skip_bus_disabled_window_ = 0;
+    skip_power_gate_window_ = 0;
+  }
+
+  void OnPowerGate(const Bool::SharedPtr msg)
+  {
+    const bool next = msg->data;
+    if (next == power_gate_open_) {
+      return;
+    }
+    power_gate_open_ = next;
+    RCLCPP_WARN(this->get_logger(), "Power sequence gate changed: gate_open=%d", power_gate_open_ ? 1 : 0);
+    if (!power_gate_open_) {
+      last_tx_pub_stamp_ns_.fill(0);
+    }
   }
 
   void OnRxFrame(const UInt8MultiArray::SharedPtr msg)
   {
-    if (!enable_rx_decode_log_) {
-      return;
-    }
-
     const auto frame = FrameCodec::Unpack(*msg);
     if (!frame.has_value()) {
       return;
@@ -478,7 +525,6 @@ private:
       return;
     }
 
-    std::ostringstream oss;
     const double expected_mit = feedback->motor_id < last_commanded_mit_rad_.size() ?
       last_commanded_mit_rad_[feedback->motor_id] :
       std::numeric_limits<double>::quiet_NaN();
@@ -517,38 +563,44 @@ private:
       }
       has_mode_status_[mid] = true;
       last_mode_status_[mid] = mode_curr;
+    }
 
-      if (publish_feedback_joint_states_ && feedback_joint_states_pub_) {
-        PublishFeedbackJointStates();
+    if (enable_rx_decode_log_) {
+      std::ostringstream oss;
+      oss << "bus=" << feedback->source_bus
+          << " motor=" << static_cast<int>(feedback->motor_id)
+          << " mode=" << static_cast<int>(feedback->mode_status)
+          << " angle=" << feedback->current_angle
+          << " speed=" << feedback->current_speed
+          << " torque=" << feedback->current_torque
+          << " temp=" << feedback->current_temp
+          << " err=" << (feedback->error_status ? "1" : "0");
+      if (std::isfinite(expected_mit)) {
+        oss << " cmd_angle=" << expected_mit
+            << " abs_err=" << std::fabs(expected_mit - feedback->current_angle);
       }
+
+      String out;
+      out.data = oss.str();
+      feedback_pub_->publish(out);
+
+      RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "%s", out.data.c_str());
+      RCLCPP_INFO_THROTTLE(
+        this->get_logger(), *this->get_clock(), 1000,
+        "MIT tracking abs_err(rad): mean=%.4f max=%.4f samples=%zu | can0(kp=%.2f,kd=%.2f,tau=%.2f) can1(kp=%.2f,kd=%.2f,tau=%.2f)",
+        error_sample_count_ > 0 ? (error_abs_sum_ / static_cast<double>(error_sample_count_)) : 0.0,
+        error_abs_max_,
+        error_sample_count_,
+        runtime_kp_can0_, runtime_kd_can0_, runtime_tau_can0_,
+        runtime_kp_can1_, runtime_kd_can1_, runtime_tau_can1_);
     }
+  }
 
-    oss << "bus=" << feedback->source_bus
-        << " motor=" << static_cast<int>(feedback->motor_id)
-        << " mode=" << static_cast<int>(feedback->mode_status)
-        << " angle=" << feedback->current_angle
-        << " speed=" << feedback->current_speed
-        << " torque=" << feedback->current_torque
-        << " temp=" << feedback->current_temp
-        << " err=" << (feedback->error_status ? "1" : "0");
-    if (std::isfinite(expected_mit)) {
-      oss << " cmd_angle=" << expected_mit
-          << " abs_err=" << std::fabs(expected_mit - feedback->current_angle);
+  void OnFeedbackJointStatesTimer()
+  {
+    if (publish_feedback_joint_states_ && feedback_joint_states_pub_) {
+      PublishFeedbackJointStates();
     }
-
-    String out;
-    out.data = oss.str();
-    feedback_pub_->publish(out);
-
-    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "%s", out.data.c_str());
-    RCLCPP_INFO_THROTTLE(
-      this->get_logger(), *this->get_clock(), 1000,
-      "MIT tracking abs_err(rad): mean=%.4f max=%.4f samples=%zu | can0(kp=%.2f,kd=%.2f,tau=%.2f) can1(kp=%.2f,kd=%.2f,tau=%.2f)",
-      error_sample_count_ > 0 ? (error_abs_sum_ / static_cast<double>(error_sample_count_)) : 0.0,
-      error_abs_max_,
-      error_sample_count_,
-      runtime_kp_can0_, runtime_kd_can0_, runtime_tau_can0_,
-      runtime_kp_can1_, runtime_kd_can1_, runtime_tau_can1_);
   }
 
   void PublishFeedbackJointStates()
@@ -811,6 +863,7 @@ private:
   std::string runtime_tune_topic_;
   bool publish_feedback_joint_states_{true};
   std::string feedback_joint_states_topic_;
+  double feedback_joint_states_timer_hz_{50.0};
   bool use_joint_cmd_limits_{true};
   std::vector<double> joint_cmd_min_rad_;
   std::vector<double> joint_cmd_max_rad_;
@@ -831,6 +884,9 @@ private:
   double feedback_fresh_timeout_s_{0.30};
   bool enable_rx_decode_log_{true};
   bool prefer_joint_name_mapping_{true};
+  bool enable_power_sequence_gate_{true};
+  std::string power_sequence_gate_topic_;
+  bool power_gate_open_{false};
   bool tx_enable_can0_{true};
   bool tx_enable_can1_{true};
   bool enable_min_tx_refresh_{true};
@@ -879,13 +935,16 @@ private:
   size_t tx_refresh_can1_window_{0};
   size_t skip_max_rate_limit_window_{0};
   size_t skip_bus_disabled_window_{0};
+  size_t skip_power_gate_window_{0};
 
   rclcpp::Subscription<JointTrajectory>::SharedPtr traj_sub_;
   rclcpp::Subscription<UInt8MultiArray>::SharedPtr rx_sub_;
   rclcpp::Subscription<String>::SharedPtr tune_sub_;
+  rclcpp::Subscription<Bool>::SharedPtr gate_sub_;
   rclcpp::Publisher<UInt8MultiArray>::SharedPtr tx_pub_;
   rclcpp::Publisher<String>::SharedPtr feedback_pub_;
   rclcpp::Publisher<JointState>::SharedPtr feedback_joint_states_pub_;
+  rclcpp::TimerBase::SharedPtr feedback_js_timer_;
   rclcpp::TimerBase::SharedPtr tx_refresh_timer_;
   rclcpp::TimerBase::SharedPtr tx_stats_timer_;
 };
