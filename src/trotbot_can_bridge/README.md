@@ -36,7 +36,7 @@ sudo apt-get install -y can-utils
 
 `/can_tx_frames`（`motor_protocol_node` → `can_transport_node`）默认使用 **Reliable + `KeepLast(can_tx_frames_qos_depth)`**（深度默认 **4000**，与 `control_gains.yaml` / `bridge.yaml` 一致），避免高频下发时 **DDS 丢帧**导致总线统计假象（ISSUE-0002）。
 
-`can_bridge.launch.py` 现默认同时启动 `power_sequence_node`（可用 `use_power_sequence:=false` 关闭）。该节点用于遥控上/下电编排：发布 `/power_sequence/gate_open` 控制轨迹门禁，并在启停阶段发布 `body_pose` 做 z 轴软升降。
+`can_bridge.launch.py` 现默认同时启动 `power_sequence_node`（可用 `use_power_sequence:=false` 关闭）。该节点用于遥控上/下电编排：发布 `/power_sequence/gate_open` 控制轨迹门禁，并在启停阶段发布 `body_pose` 做 z 轴软升降。启动流程可选 **主动上报**：`power_sequence.yaml` 中 **`enable_active_report_in_startup`**（默认 true）、**`enable_active_report_at_launch`**（默认 true：节点启动后 **`active_report_boot_delay_s`** 秒即在 **Idle** 发 0x7026 + 0x18 ON，**不必等 start**）、**`active_report_hz`**（默认 10，写入 **0x7026**）、**`active_report_master_id`**（默认 -1 与 `motor_master_id` 相同）。**下电 `Disable` 只发失能、不关闭主动上报**，以便 shutdown 后 RViz 等仍能靠 **0x18** 刷新；需要「上报关 + 失能」请用 **`el05_motor_cansend.sh reset`**。**0x18** 上报帧由 **`motor_protocol_node`** 与 **0x02** 一并解析进 `/joint_states_feedback`。
 
 默认按键（`power_sequence.yaml` 可改）：
 

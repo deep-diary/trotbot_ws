@@ -45,6 +45,18 @@
     send_enable_in_startup: true
     send_mit_zero_in_startup: true
 
+    # 主动上报（通信类型 24 / CAN ID 0x18）：与 0x02 反馈同数据域，motor_protocol 统一解析；上电无查询反馈时 RViz 仍可刷新。
+    # 下电 Disable 仅发失能，不关闭主动上报，便于 RViz 在全生命周期内仍能看到实际关节（关上报请用 el05_motor_cansend.sh reset 等）
+    enable_active_report_in_startup: true
+    # launch 后 Idle 即发一次 0x7026 + 上报 ON（无需等 start），便于 RViz 反馈模型尽早有实测角
+    enable_active_report_at_launch: true
+    # 延迟秒数：略晚于 can_transport 订阅 /can_tx_frames，避免首包丢失
+    active_report_boot_delay_s: 0.25
+    # 目标频率（Hz），内部写入 0x7026 EPScan_time（换算同 el05_motor_cansend.sh）
+    active_report_hz: 10.0
+    # 上报帧 ID 内主站字节；-1 表示与 motor_master_id 相同（若手册要求主站 0，可改为 0）
+    active_report_master_id: -1
+
     # MIT 首帧参数
     init_kp: 20.0
     init_kd: 1.5

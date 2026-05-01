@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -27,6 +28,19 @@ using std_msgs::msg::UInt8MultiArray;
 
 namespace trotbot_can_bridge
 {
+namespace
+{
+uint16_t HzToEpScanTime(double hz)
+{
+  if (hz <= 0.0) {
+    hz = 5.0;
+  }
+  const double period_ms = 1000.0 / hz;
+  int n = static_cast<int>(std::lround((period_ms - 10.0) / 5.0 + 1.0));
+  n = std::max(1, std::min(n, 65535));
+  return static_cast<uint16_t>(n);
+}
+}  // namespace
 
 enum class SequenceState
 {
@@ -81,6 +95,11 @@ public:
     send_set_zero_in_startup_ = this->declare_parameter<bool>("send_set_zero_in_startup", false);
     send_enable_in_startup_ = this->declare_parameter<bool>("send_enable_in_startup", true);
     send_mit_zero_in_startup_ = this->declare_parameter<bool>("send_mit_zero_in_startup", true);
+    enable_active_report_in_startup_ = this->declare_parameter<bool>("enable_active_report_in_startup", true);
+    active_report_hz_ = this->declare_parameter<double>("active_report_hz", 10.0);
+    active_report_master_id_ = this->declare_parameter<int>("active_report_master_id", -1);
+    enable_active_report_at_launch_ = this->declare_parameter<bool>("enable_active_report_at_launch", true);
+    active_report_boot_delay_s_ = this->declare_parameter<double>("active_report_boot_delay_s", 0.25);
 
     track_body_pose_height_ = this->declare_parameter<bool>("track_body_pose_height", true);
     body_pose_stale_s_ = this->declare_parameter<double>("body_pose_stale_s", 2.0);
@@ -108,6 +127,13 @@ public:
       std::chrono::milliseconds(std::max(5, timer_period_ms_)),
       std::bind(&PowerSequenceNode::OnTimer, this));
 
+    if (enable_active_report_in_startup_ && enable_active_report_at_launch_) {
+      const int boot_ms = std::max(0, static_cast<int>(std::lround(active_report_boot_delay_s_ * 1000.0)));
+      boot_report_timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(boot_ms),
+        std::bind(&PowerSequenceNode::OnBootActiveReportOnce, this));
+    }
+
     gate_open_ = false;
     PublishGate();
     PublishState();
@@ -115,10 +141,31 @@ public:
   }
 
 private:
-  static constexpr uint8_t kCmdControl = 0x01;
   static constexpr uint8_t kCmdEnable = 0x03;
   static constexpr uint8_t kCmdReset = 0x04;
   static constexpr uint8_t kCmdSetZero = 0x06;
+  static constexpr uint8_t kCmdSetParam = 18;
+  /// 手册通信类型 24，CAN ID 高 5 位为 0x18
+  static constexpr uint8_t kCommActiveReport = 24;
+  static constexpr uint16_t kParamEpScanTime = 0x7026;
+
+  void OnBootActiveReportOnce()
+  {
+    if (boot_active_report_done_) {
+      return;
+    }
+    boot_active_report_done_ = true;
+    if (boot_report_timer_) {
+      boot_report_timer_->cancel();
+    }
+    const uint16_t scan = HzToEpScanTime(active_report_hz_);
+    SendEpScanTimeAll(scan);
+    SendActiveReportAll(true);
+    RCLCPP_INFO(
+      this->get_logger(),
+      "active report at launch (Idle): EPScan_time=%u (~%.2f Hz), COMM 0x18 ON — before start, for RViz /joint_states_feedback",
+      static_cast<unsigned>(scan), active_report_hz_);
+  }
 
   void OnJoy(const Joy::SharedPtr msg)
   {
@@ -335,6 +382,7 @@ private:
         break;
       case SequenceState::Disable:
         if (!disable_sent_) {
+          // 不下发「上报 OFF」：shutdown 后 RViz/观测仍依赖 0x18 刷新关节态；需要关上报请用手动脚本 reset
           SendCmdAll(kCmdReset);
           disable_sent_ = true;
         }
@@ -473,18 +521,68 @@ private:
     if (send_set_zero_in_startup_) {
       SendSetZeroAll();
     }
+    if (enable_active_report_in_startup_ && send_enable_in_startup_) {
+      const uint16_t scan = HzToEpScanTime(active_report_hz_);
+      SendEpScanTimeAll(scan);
+      RCLCPP_INFO(
+        this->get_logger(),
+        "active report: EPScan_time=%u (~%.2f Hz requested) before enable",
+        static_cast<unsigned>(scan), active_report_hz_);
+    }
     if (send_enable_in_startup_) {
       SendCmdAll(kCmdEnable);
     }
     if (send_mit_zero_in_startup_) {
       SendMitZeroAll();
     }
+    if (enable_active_report_in_startup_ && send_enable_in_startup_) {
+      SendActiveReportAll(true);
+      RCLCPP_INFO(this->get_logger(), "active report: COMM 0x18 ON (all motors)");
+    }
+  }
+
+  int ReportMasterForCanId() const
+  {
+    return active_report_master_id_ >= 0 ? active_report_master_id_ : motor_master_id_;
+  }
+
+  void SendEpScanTimeAll(uint16_t scan_time)
+  {
+    const uint8_t p_lo = static_cast<uint8_t>(kParamEpScanTime & 0xFF);
+    const uint8_t p_hi = static_cast<uint8_t>((kParamEpScanTime >> 8) & 0xFF);
+    for (const auto & route : DogMapper::kTemporaryIndexMap) {
+      CanFrameMessage frame = BuildCmdFrame(route.bus, route.motor_id, kCmdSetParam, motor_master_id_);
+      frame.data[0] = p_lo;
+      frame.data[1] = p_hi;
+      frame.data[2] = 0;
+      frame.data[3] = 0;
+      frame.data[4] = static_cast<uint8_t>(scan_time & 0xFF);
+      frame.data[5] = static_cast<uint8_t>((scan_time >> 8) & 0xFF);
+      frame.data[6] = 0;
+      frame.data[7] = 0;
+      tx_pub_->publish(FrameCodec::Pack(frame));
+    }
+  }
+
+  void SendActiveReportAll(bool on)
+  {
+    static constexpr std::array<uint8_t, 6> kReportPrefix{0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const int rmaster = ReportMasterForCanId();
+    for (const auto & route : DogMapper::kTemporaryIndexMap) {
+      CanFrameMessage frame = BuildCmdFrame(route.bus, route.motor_id, kCommActiveReport, rmaster);
+      for (size_t i = 0; i < kReportPrefix.size(); ++i) {
+        frame.data[i] = kReportPrefix[i];
+      }
+      frame.data[6] = on ? 0x01 : 0x00;
+      frame.data[7] = 0x00;
+      tx_pub_->publish(FrameCodec::Pack(frame));
+    }
   }
 
   void SendSetZeroAll()
   {
     for (const auto & route : DogMapper::kTemporaryIndexMap) {
-      CanFrameMessage frame = BuildCmdFrame(route.bus, route.motor_id, kCmdSetZero);
+      CanFrameMessage frame = BuildCmdFrame(route.bus, route.motor_id, kCmdSetZero, motor_master_id_);
       frame.data[0] = 0x01;
       tx_pub_->publish(FrameCodec::Pack(frame));
     }
@@ -493,7 +591,7 @@ private:
   void SendCmdAll(uint8_t cmd)
   {
     for (const auto & route : DogMapper::kTemporaryIndexMap) {
-      tx_pub_->publish(FrameCodec::Pack(BuildCmdFrame(route.bus, route.motor_id, cmd)));
+      tx_pub_->publish(FrameCodec::Pack(BuildCmdFrame(route.bus, route.motor_id, cmd, motor_master_id_)));
     }
   }
 
@@ -512,14 +610,14 @@ private:
     }
   }
 
-  CanFrameMessage BuildCmdFrame(CanBus bus, uint8_t motor_id, uint8_t cmd) const
+  CanFrameMessage BuildCmdFrame(CanBus bus, uint8_t motor_id, uint8_t cmd, int master_id) const
   {
     CanFrameMessage frame;
     frame.bus = bus;
     frame.is_extended = true;
     frame.dlc = 8;
     frame.can_id = ((static_cast<uint32_t>(cmd) << 24) |
-      (static_cast<uint32_t>(motor_master_id_ & 0xFF) << 8) |
+      (static_cast<uint32_t>(master_id & 0xFF) << 8) |
       static_cast<uint32_t>(motor_id));
     frame.data.fill(0);
     return frame;
@@ -558,6 +656,11 @@ private:
   bool send_set_zero_in_startup_{false};
   bool send_enable_in_startup_{true};
   bool send_mit_zero_in_startup_{true};
+  bool enable_active_report_in_startup_{true};
+  double active_report_hz_{10.0};
+  int active_report_master_id_{-1};
+  bool enable_active_report_at_launch_{true};
+  double active_report_boot_delay_s_{0.25};
 
   bool track_body_pose_height_{true};
   double body_pose_stale_s_{2.0};
@@ -598,6 +701,8 @@ private:
   rclcpp::Subscription<String>::SharedPtr command_sub_;
   rclcpp::Subscription<Pose>::SharedPtr body_pose_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::TimerBase::SharedPtr boot_report_timer_;
+  bool boot_active_report_done_{false};
 };
 
 }  // namespace trotbot_can_bridge

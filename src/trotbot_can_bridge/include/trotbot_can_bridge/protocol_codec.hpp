@@ -16,7 +16,9 @@ class ProtocolCodec
 {
 public:
   static constexpr uint8_t kMotorCmdControl = 0x01;   // MIT 运控
-  static constexpr uint8_t kMotorCmdFeedback = 0x02;  // 电机反馈
+  static constexpr uint8_t kMotorCmdFeedback = 0x02;  // 电机反馈（应答）
+  /// 手册通信类型 24：主动周期上报，29bit ID 高 5 位为 0x18，8B 数据域与 0x02 反馈相同
+  static constexpr uint8_t kMotorCmdActiveReport = 0x18;
 
   static constexpr float kPMin = -12.57f;
   static constexpr float kPMax = 12.57f;
@@ -60,7 +62,7 @@ public:
   static std::optional<MotorFeedback> DecodeFeedback(const CanFrameMessage & frame)
   {
     const uint8_t cmd_type = static_cast<uint8_t>((frame.can_id >> 24) & 0x1F);
-    if (cmd_type != kMotorCmdFeedback) {
+    if (cmd_type != kMotorCmdFeedback && cmd_type != kMotorCmdActiveReport) {
       return std::nullopt;
     }
 
