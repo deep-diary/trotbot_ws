@@ -1,13 +1,13 @@
 /**:
   ros__parameters:
-    kp: 20.0
-    kd: 1.5
+    kp: 50.0
+    kd: 2.5
     default_velocity: 0.0
     default_tau_ff: 0.0
     # 运行时在线联调（std_msgs/String，key=value 空格分隔）默认话题：
     #   /mit_gains_cmd
     # 示例：
-    #   scope=all kp=25 kd=1.8
+    #   scope=all kp=50 kd=2.5
     #   scope=rear tau=0.6
     #   reset=1
     runtime_tune_topic: /mit_gains_cmd

@@ -74,7 +74,7 @@ Wants=network-pre.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -lc 'for i in can0 can1; do ip link show "$i" >/dev/null 2>&1 || continue; ip link set "$i" down || true; ip link set "$i" type can bitrate 1000000 restart-ms 100; ip link set "$i" up; done'
+ExecStart=/bin/bash -lc 'for i in can0 can1; do ip link show "$i" >/dev/null 2>&1 || continue; ip link set "$i" down || true; ip link set "$i" type can bitrate 1000000 restart-ms 100; ip link set "$i" up; ip link set "$i" txqueuelen 1000 || true; done'
 RemainAfterExit=yes
 
 [Install]
@@ -85,6 +85,8 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now can-up.service
 systemctl status can-up.service --no-pager
 ```
+
+`txqueuelen 1000` 用于加大发送队列深度，减轻高频下发或并发发送时的 **`write: No buffer space available`**；负载不高时行为与默认相近。
 
 ### 1b) 复盘结论（为什么会“有时好有时坏”）
 
@@ -104,6 +106,8 @@ sudo ip link set can0 type can bitrate 1000000
 sudo ip link set can1 type can bitrate 1000000
 sudo ip link set can0 up
 sudo ip link set can1 up
+sudo ip link set can0 txqueuelen 1000
+sudo ip link set can1 txqueuelen 1000
 ip -details -statistics link show can0
 ip -details -statistics link show can1
 ```

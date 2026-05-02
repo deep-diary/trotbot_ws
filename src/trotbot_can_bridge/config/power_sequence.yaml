@@ -57,9 +57,9 @@
     # 上报帧 ID 内主站字节；-1 表示与 motor_master_id 相同（若手册要求主站 0，可改为 0）
     active_report_master_id: -1
 
-    # MIT 首帧参数
-    init_kp: 20.0
-    init_kd: 1.5
+    # MIT 首帧参数（与 control_gains.yaml 默认 kp/kd 一致，避免上电首帧过软）
+    init_kp: 50.0
+    init_kd: 2.5
     init_velocity: 0.0
     init_tau: 0.0
 

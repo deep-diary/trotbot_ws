@@ -495,13 +495,15 @@ Wants=network-pre.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -lc 'for i in can0 can1; do ip link show "$i" >/dev/null 2>&1 || continue; ip link set "$i" down || true; ip link set "$i" type can bitrate 1000000 restart-ms 100; ip link set "$i" up; done'
+ExecStart=/bin/bash -lc 'for i in can0 can1; do ip link show "$i" >/dev/null 2>&1 || continue; ip link set "$i" down || true; ip link set "$i" type can bitrate 1000000 restart-ms 100; ip link set "$i" up; ip link set "$i" txqueuelen 1000 || true; done'
 RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 EOF
 ```
+
+其中在 `up` 之后设置 **`txqueuelen 1000`**，可减轻高频/并发发送时的 **`ENOBUFS`（No buffer space available）**；低负载下对时延影响很小。
 
 2) 启用并立即执行：
 
