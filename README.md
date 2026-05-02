@@ -169,6 +169,9 @@ ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'prone
 
 # 下电流程
 ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'shutdown'}"
+
+# 十二电机机械零位（仅 Idle + gate 关闭时生效；无手柄调试用）
+ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'set_zero'}"
 ```
 
 执行前请 **`source install/setup.bash`**，且 **`power_sequence_node` 已在运行**。观察状态可配合：
@@ -178,7 +181,7 @@ ros2 topic echo /power_sequence/state --once
 ros2 topic echo /power_sequence/gate_open --once
 ```
 
-说明：若当前状态机不允许该指令，节点会忽略并输出 `ignore command=...`；未知字符串会提示 `supported: start/prone/shutdown`。
+说明：若当前状态机不允许该指令，节点会忽略并输出 `ignore command=...`；未知字符串会提示 `supported: start/prone/shutdown/set_zero`。
 
 **指令语义（与 `power_sequence_node` 一致）**
 
@@ -187,8 +190,11 @@ ros2 topic echo /power_sequence/gate_open --once
 | `start` | `Idle` → 上电站立流程；**`ProneHold`（已趴下且仍使能）** → 再次进入 `SoftStand` 站起 |
 | `prone` | 仅在 **`Running`**：`SoftProne` 过渡到趴姿目标后进入 **`ProneHold`**，**不发 Reset、保持使能与 gate** |
 | `shutdown` | **`ProneHold`**：直接进入 **`Disable`**（全机 `Reset` 后回 `Idle`）；其余 **`Idle` / `Precheck` / `EnableInit` / `SoftStand` / `Running` / `SoftProne`**：先 **`SoftProne`**，再 **`Disable`** |
+| `set_zero` | **维修后机械零位**：仅 **`Idle`** 且 **`gate_open=false`** 时对 12 电机发 EL05 **`set_zero`**（CMD 0x06）；非 Idle 拒绝（日志 WARN）。与 URDF `joint_offsets` 标定不同层 |
 
 手柄等效：`L1+R1`（且**未**按 Share）或 **`□`（Square）** 长按 → 与 **`start`** 相同计时（`start_longpress_s`）；**`○`（Circle）** 长按 → 与 **`prone`** 相同计时（`prone_longpress_s`）。PS4 类布局下 `□` 默认 `button_square:=3`，若与你的 `sensor_msgs/Joy` 不符请改 `power_sequence.yaml`。
+
+**机械零位（RQ-024）**：仅在 **`Idle`、尚未 `start`** 时使用——PS4 **Options** 长按 **`set_zero_longpress_s`**（默认约 2 s，防误触），或上述话题 **`set_zero`**。按钮索引 **`button_option`**（默认 9）务必用 **`ros2 topic echo /joy`** 对照 Options 实测；设 **`button_option: -1`** 可关闭手柄、仅保留话题。勿与 **`el05_motor_explicit_cmds_12_direct.sh`** 等 **cansend** 脚本并发抢总线。
 
 **站立 `Running` 时再触发 `start`（话题或 □/L1+R1）**：话题会 **`ignore`**；手柄在 **`Running`** 分支**只处理**下电与 **`prone`**，**不会**执行 start，也**不会**先趴再起。
 

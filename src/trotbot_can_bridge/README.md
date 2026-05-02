@@ -43,6 +43,7 @@ sudo apt-get install -y can-utils
 - `L1 + R1` **或** **`□`（Square）** 长按：上电 / `start`（`Idle`→`Precheck…`；`ProneHold`→`SoftStand`），时长用 **`start_longpress_s`**
 - `L1 + R1 + Share` 长按：下电收拢（`SoftProne -> Disable -> Idle`，与话题 `shutdown` 同语义）
 - `Circle`（`○`）长按：趴下至 **`ProneHold`**（保持使能、门禁仍开），时长用 **`prone_longpress_s`**，与话题 **`prone`** 同语义
+- **`Options`**（索引 **`button_option`**，默认 9）长按 **`set_zero_longpress_s`**：**机械零位**（CMD 0x06），成功触发后默认 **`set_zero_repeat_count`**（如 3）轮完整 `SendSetZeroAll`，轮间隔 **`set_zero_repeat_interval_ms`**；仅 **`Idle`** 且门禁关；与 URDF `joint_offsets` 不同层；勿与脚本 **`zero`** 并发
 
 ### 无电机使能的安全抓包模式（推荐先联调）
 
@@ -74,6 +75,7 @@ send_mit_zero_in_startup: false
 - `start`：`Idle` 上电流程；**`ProneHold`** 时再次站起（`SoftStand -> Running`）
 - `prone`：仅 **`Running`** → `SoftProne` → **`ProneHold`**（不发 Reset）
 - `shutdown`：`ProneHold` 直接 `Disable`；其余允许态先 `SoftProne` 再 `Disable`（见根 `README.md` 2a-1 表）
+- `set_zero`：十二电机机械零位（同上 gate）；非 Idle 拒绝
 
 示例：
 
@@ -81,6 +83,7 @@ send_mit_zero_in_startup: false
 ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'start'}"
 ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'prone'}"
 ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'shutdown'}"
+ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'set_zero'}"
 ```
 
 状态观测：

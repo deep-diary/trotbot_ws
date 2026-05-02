@@ -6,7 +6,9 @@
 #include <functional>
 #include <cctype>
 #include <memory>
+#include <sstream>
 #include <string>
+#include <thread>
 
 #include "geometry_msgs/msg/pose.hpp"
 #include "geometry_msgs/msg/twist.hpp"
@@ -101,6 +103,13 @@ public:
     enable_active_report_at_launch_ = this->declare_parameter<bool>("enable_active_report_at_launch", true);
     active_report_boot_delay_s_ = this->declare_parameter<double>("active_report_boot_delay_s", 0.25);
 
+    enable_remote_set_zero_ = this->declare_parameter<bool>("enable_remote_set_zero", true);
+    button_option_ = this->declare_parameter<int>("button_option", 9);
+    set_zero_longpress_s_ = this->declare_parameter<double>("set_zero_longpress_s", 2.0);
+    set_zero_event_topic_ = this->declare_parameter<std::string>("set_zero_event_topic", "");
+    set_zero_repeat_count_ = this->declare_parameter<int>("set_zero_repeat_count", 3);
+    set_zero_repeat_interval_ms_ = this->declare_parameter<int>("set_zero_repeat_interval_ms", 40);
+
     track_body_pose_height_ = this->declare_parameter<bool>("track_body_pose_height", true);
     body_pose_stale_s_ = this->declare_parameter<double>("body_pose_stale_s", 2.0);
     track_z_clamp_min_ = this->declare_parameter<double>("track_z_clamp_min", -0.5);
@@ -114,6 +123,9 @@ public:
     cmd_vel_pub_ = this->create_publisher<Twist>(cmd_vel_topic_, 10);
     gate_pub_ = this->create_publisher<Bool>(gate_topic_, rclcpp::QoS(1).reliable().transient_local());
     state_pub_ = this->create_publisher<String>(state_topic_, 10);
+    if (!set_zero_event_topic_.empty()) {
+      event_pub_ = this->create_publisher<String>(set_zero_event_topic_, 10);
+    }
     joy_sub_ = this->create_subscription<Joy>(joy_topic_, 10, std::bind(&PowerSequenceNode::OnJoy, this, std::placeholders::_1));
     command_sub_ = this->create_subscription<String>(
       command_topic_, 10, std::bind(&PowerSequenceNode::OnCommand, this, std::placeholders::_1));
@@ -225,7 +237,12 @@ private:
       RCLCPP_WARN(this->get_logger(), "ignore command=shutdown in state=%s", StateName(state_));
       return;
     }
-    RCLCPP_WARN(this->get_logger(), "unknown command=%s (supported: start/prone/shutdown)", command.c_str());
+    if (command == "set_zero") {
+      (void)TryRemoteSetZero("command");
+      return;
+    }
+    RCLCPP_WARN(
+      this->get_logger(), "unknown command=%s (supported: start/prone/shutdown/set_zero)", command.c_str());
   }
 
   bool ButtonOn(int idx) const
@@ -239,6 +256,19 @@ private:
   void OnTimer()
   {
     const double dt = static_cast<double>(std::max(5, timer_period_ms_)) / 1000.0;
+
+    // RQ-024：PS4 Options（可配置）长按 → 12 路机械 set_zero；仅 TryRemoteSetZero 内允许 Idle+门禁关
+    const bool option_btn =
+      (button_option_ >= 0) && enable_remote_set_zero_ && ButtonOn(button_option_);
+    option_hold_s_ = option_btn ? (option_hold_s_ + dt) : 0.0;
+    if (!option_btn) {
+      option_action_done_this_hold_ = false;
+    }
+    if (option_btn && option_hold_s_ >= set_zero_longpress_s_ && !option_action_done_this_hold_) {
+      (void)TryRemoteSetZero("joy");
+      option_action_done_this_hold_ = true;
+    }
+
     const bool l1 = ButtonOn(button_l1_);
     const bool r1 = ButtonOn(button_r1_);
     const bool share = ButtonOn(button_share_);
@@ -579,6 +609,50 @@ private:
     }
   }
 
+  void PublishSetZeroEvent(const std::string & payload)
+  {
+    if (!event_pub_) {
+      return;
+    }
+    String msg;
+    msg.data = payload;
+    event_pub_->publish(msg);
+  }
+
+  bool TryRemoteSetZero(const char * trigger)
+  {
+    if (!enable_remote_set_zero_) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "reject set_zero (%s): enable_remote_set_zero=false", trigger);
+      return false;
+    }
+    if (state_ != SequenceState::Idle || gate_open_) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "reject set_zero (%s): require state=Idle and gate_open=false (now state=%s gate_open=%d)",
+        trigger, StateName(state_), gate_open_ ? 1 : 0);
+      std::ostringstream oss;
+      oss << "set_zero_rejected:" << StateName(state_) << ":gate=" << (gate_open_ ? 1 : 0) << ":" << trigger;
+      PublishSetZeroEvent(oss.str());
+      return false;
+    }
+    const int rounds = std::clamp(set_zero_repeat_count_, 1, 10);
+    const int gap_ms = std::max(0, set_zero_repeat_interval_ms_);
+    for (int r = 0; r < rounds; ++r) {
+      SendSetZeroAll();
+      if (r + 1 < rounds && gap_ms > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(gap_ms));
+      }
+    }
+    RCLCPP_WARN(
+      this->get_logger(),
+      "set_zero: sent CMD 0x06 to all 12 motors %d round(s), gap_ms=%d (trigger=%s). Mechanical zero redefined — verify URDF/joint_offsets vs EL05 layer.",
+      rounds, gap_ms, trigger);
+    PublishSetZeroEvent(std::string("set_zero_ok:") + trigger);
+    return true;
+  }
+
   void SendSetZeroAll()
   {
     for (const auto & route : DogMapper::kTemporaryIndexMap) {
@@ -662,6 +736,15 @@ private:
   bool enable_active_report_at_launch_{true};
   double active_report_boot_delay_s_{0.25};
 
+  bool enable_remote_set_zero_{true};
+  int button_option_{9};
+  double set_zero_longpress_s_{2.0};
+  std::string set_zero_event_topic_;
+  int set_zero_repeat_count_{3};
+  int set_zero_repeat_interval_ms_{40};
+  double option_hold_s_{0.0};
+  bool option_action_done_this_hold_{false};
+
   bool track_body_pose_height_{true};
   double body_pose_stale_s_{2.0};
   double track_z_clamp_min_{-0.5};
@@ -697,6 +780,7 @@ private:
   rclcpp::Publisher<Twist>::SharedPtr cmd_vel_pub_;
   rclcpp::Publisher<Bool>::SharedPtr gate_pub_;
   rclcpp::Publisher<String>::SharedPtr state_pub_;
+  rclcpp::Publisher<String>::SharedPtr event_pub_;
   rclcpp::Subscription<Joy>::SharedPtr joy_sub_;
   rclcpp::Subscription<String>::SharedPtr command_sub_;
   rclcpp::Subscription<Pose>::SharedPtr body_pose_sub_;

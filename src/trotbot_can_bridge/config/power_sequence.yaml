@@ -40,6 +40,18 @@
     stand_z: 0.0
     prone_z: -0.2
 
+    # RQ-024：维修后机械零位（与 URDF joint_offsets 标定不同层）。仅 Idle、门禁关、未使能流程时允许；与 send_set_zero_in_startup 无互斥，但日常仍建议关启动自动零位、用手柄/话题单独执行。
+    enable_remote_set_zero: true
+    # PS4 Options：内核 joy 下标因驱动而异，务必 ros2 topic echo /joy 实测后填写；-1 关闭手柄触发（仍可用 /power_sequence/command set_zero）
+    button_option: 9
+    # Options 长按生效秒数（防误触）
+    set_zero_longpress_s: 2.0
+    # 非空则发布 set_zero_ok / set_zero_rejected:... 事件，便于联调或上层记录
+    set_zero_event_topic: ""
+    # 遥控/话题 set_zero 成功后：完整 12 电机 set_zero 帧重复次数（提高可靠性）；轮与轮之间间隔毫秒（略大于 el05 脚本 SLEEP_MS 思路）
+    set_zero_repeat_count: 3
+    set_zero_repeat_interval_ms: 40
+
     # 启动默认不重设零位（zero_sta 已切换为 ±π）
     send_set_zero_in_startup: false
     send_enable_in_startup: true
