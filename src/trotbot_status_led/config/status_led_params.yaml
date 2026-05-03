@@ -1,0 +1,42 @@
+# RQ-023 状态灯节点参数（实机请按 gpioinfo 填写 gpiochip / gpio_line_offset）
+status_led_node:
+  ros__parameters:
+    # rockchip_mmap：直接写 GPIO 寄存器发 WS2812 位流（推荐）。gpiod 后端易因 ioctl 过慢导致「全亮发白」。
+    # mmap 需读 /dev/mem，通常请 sudo 运行节点。
+    ws2812_backend: "rockchip_mmap"
+    # RK3588 GPIO3 控制器物理基址 0xFEC40000（十进制见下；勿与 gpiochip 编号混淆）。
+    mmap_gpio_phys_base: 4274257920
+
+    # 鲁班猫 RK3588：40PIN Pin16 ↔ SoC GPIO3_C1。本机 sysfs：gpiochip3 = OF alias gpio3（pinctrl@fec40000）；
+    # Rockchip 单 bank 内 PortC 下标 1 → line = 8*2+1 = 17。若灯不亮或 busy，请用 `sudo gpioinfo gpiochip3` 核对。
+    gpiochip: "gpiochip3"
+    gpio_line_offset: 17
+
+    led_count: 16
+    global_brightness: 0.1
+
+    state_map_file: "config/status_led_map.yaml"
+
+    state_topic: "/power_sequence/state"
+    gate_topic: "/power_sequence/gate_open"
+
+    # 首灯仍闪时可略降（如 30），减轻边界重入；代价是呼吸动画略钝
+    refresh_hz: 40.0
+
+    # 桌面 / CI 无 GPIO：true 时不访问硬件（仍为 degradation 语义的一种）
+    simulate_hardware: false
+
+    # AArch64 已用 CNTVCT 忙等；以下可降低「全白」（定时被判成全 1）
+    mlock_all: true
+    realtime_sched_priority: 50
+
+    # WS2812 bit 时序（纳秒）；发白时可略减 t0h_ns / t1h_ns 或增大 t0l/t1l
+    timing_t0h_ns: 280
+    timing_t0l_ns: 900
+    timing_t1h_ns: 650
+    timing_t1l_ns: 450
+    timing_reset_us: 400
+    # 帧首长低（µs）。WS2812 为 GRB，首字节为 G，首 bit 抖动常表现为「首灯闪绿」；可与 reset 同量级或 500～800 试跑。
+    # 设为 0 则仅用 timing_pre_frame_idle_us。
+    timing_lead_in_reset_us: 800
+    timing_pre_frame_idle_us: 0

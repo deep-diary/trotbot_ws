@@ -23,6 +23,8 @@
 #   # 同时打开 RViz（需 DISPLAY；加载 share/trotbot/rviz/trotbot.rviz；RobotModel 用 /robot_description 话题）：
 #   ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true rviz:=true
 #   ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true rviz:=true rviz_config:=/path/to/custom.rviz
+#   无屏交付 / WS2812 状态灯（需板载 GPIO 与 libgpiod；见 trotbot_status_led README）：
+#   ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true use_status_led:=true
 #   默认 description_file=minidog_champ.urdf.xacro、gait_config_file=gait_minidog.yaml；旧款可显式传 trotbot.urdf.xacro / gait.yaml
 #   ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.1}}" --once
 
@@ -59,6 +61,13 @@ def generate_launch_description():
         name="use_can_bridge",
         default_value="false",
         description="是否启动 MIT-only 双节点 CAN bridge",
+    )
+
+    use_status_led = LaunchConfiguration("use_status_led")
+    use_status_led_launch_arg = DeclareLaunchArgument(
+        name="use_status_led",
+        default_value="false",
+        description="是否包含 WS2812 状态灯节点（trotbot_status_led；需 RK3588 GPIO + libgpiod）",
     )
 
     use_teleop = LaunchConfiguration("use_teleop")
@@ -211,6 +220,15 @@ def generate_launch_description():
         condition=IfCondition(use_can_bridge),
     )
 
+    status_led_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution(
+                [FindPackageShare("trotbot_status_led"), "launch", "status_led.launch.py"]
+            )
+        ),
+        condition=IfCondition(use_status_led),
+    )
+
     # Optional: include teleop in one command
     teleop_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -230,6 +248,7 @@ def generate_launch_description():
         use_sim_time_launch_arg,
         has_imu_launch_arg,
         use_can_bridge_launch_arg,
+        use_status_led_launch_arg,
         use_teleop_launch_arg,
         use_joystick_launch_arg,
         joystick_dev_launch_arg,
@@ -242,6 +261,7 @@ def generate_launch_description():
         # Core TrotBot functionality
         champ_controllers_launch,    # Champ quadruped controller + state estimator
         can_bridge_launch,           # MIT-only dual-node CAN bridge
+        status_led_launch,           # Optional WS2812 status ring (RQ-023)
         teleop_launch,               # Optional teleop include (keyboard/joystick)
         robot_state_publisher_node,
         robot_state_publisher_feedback_node,

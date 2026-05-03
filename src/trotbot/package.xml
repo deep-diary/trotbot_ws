@@ -23,6 +23,7 @@
   <depend>champ_base</depend>
   <depend>champ_msgs</depend>
   <depend>trotbot_can_bridge</depend>
+  <exec_depend>trotbot_status_led</exec_depend>
 
   <!-- Launch and visualization -->
   <depend>launch</depend>

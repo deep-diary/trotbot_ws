@@ -1,0 +1,49 @@
+# Pin16 (LubanCat-4-V1) ↔ SoC GPIO3_C1，WS2812 DIN，默认 16 灯。
+# gpiochip + line offset 随镜像/DTS 变化，请在目标板执行 `gpioinfo <chip>` 实测后写入
+# config/status_led_params.yaml（勿依赖 sysfs 全局编号）。
+#
+# gate: 与 /power_sequence/gate_open 组合；省略或 null 表示不区分 gate。
+# breath_period_s: >0 时对该规则做低速亮度呼吸（秒/周期）。
+
+version: 1
+
+# 无匹配规则时的默认 RGB
+default_rgb: [40, 40, 40]
+
+# 自上而下优先匹配（先写更具体的规则，例如 Running+gate 再写其它 Running）
+rules:
+  - state: Fault
+    rgb: [255, 0, 0]
+
+  - state: Idle
+    rgb: [0, 0, 128]
+
+  - state: Disable
+    rgb: [0, 0, 80]
+
+  - state: Precheck
+    rgb: [255, 140, 0]
+    breath_period_s: 1.2
+
+  - state: EnableInit
+    rgb: [255, 200, 0]
+    breath_period_s: 1.5
+
+  - state: SoftStand
+    rgb: [255, 220, 0]
+    breath_period_s: 2.0
+
+  - state: Running
+    gate: true
+    rgb: [0, 255, 0]
+
+  - state: Running
+    gate: false
+    rgb: [180, 255, 0]
+
+  - state: SoftProne
+    rgb: [255, 80, 0]
+    breath_period_s: 2.0
+
+  - state: ProneHold
+    rgb: [0, 128, 255]
