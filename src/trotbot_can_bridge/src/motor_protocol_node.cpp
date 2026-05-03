@@ -10,6 +10,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "diagnostic_msgs/msg/diagnostic_array.hpp"
+#include "diagnostic_msgs/msg/diagnostic_status.hpp"
+#include "diagnostic_msgs/msg/key_value.hpp"
+#include "rcl_interfaces/msg/set_parameters_result.hpp"
+#include "rclcpp/node_interfaces/node_parameters_interface.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/bool.hpp"
@@ -20,6 +25,9 @@
 #include "trotbot_can_bridge/frame_codec.hpp"
 #include "trotbot_can_bridge/protocol_codec.hpp"
 
+using diagnostic_msgs::msg::DiagnosticArray;
+using diagnostic_msgs::msg::DiagnosticStatus;
+using diagnostic_msgs::msg::KeyValue;
 using trajectory_msgs::msg::JointTrajectory;
 using sensor_msgs::msg::JointState;
 using std_msgs::msg::Bool;
@@ -107,6 +115,14 @@ public:
     feedback_joint_states_topic_ = this->declare_parameter<std::string>(
       "feedback_joint_states_topic", "/joint_states_feedback");
     feedback_joint_states_timer_hz_ = this->declare_parameter<double>("feedback_joint_states_timer_hz", 50.0);
+    publish_feedback_velocity_effort_ = this->declare_parameter<bool>("publish_feedback_velocity_effort", true);
+    feedback_joint_fill_nan_ = this->declare_parameter<bool>("feedback_joint_fill_nan", true);
+    publish_motor_diagnostics_ = this->declare_parameter<bool>("publish_motor_diagnostics", false);
+    motor_diagnostics_topic_ = this->declare_parameter<std::string>("motor_diagnostics_topic", "/diagnostics");
+    enable_joint_tau_ff_ = this->declare_parameter<bool>("enable_joint_tau_ff", false);
+    gravity_ff_scale_ = this->declare_parameter<double>("gravity_ff_scale", 0.5);
+    tau_ff_nominal_nm_ = this->declare_parameter<std::vector<double>>(
+      "tau_ff_nominal_nm", std::vector<double>(12, 0.0));
     use_joint_cmd_limits_ = this->declare_parameter<bool>("use_joint_cmd_limits", true);
     joint_cmd_min_rad_ = this->declare_parameter<std::vector<double>>(
       "joint_cmd_min_rad", std::vector<double>(12, -3.14));
@@ -166,6 +182,10 @@ public:
       joint_signs_ = std::vector<double>(12, 1.0);
       joint_offsets_rad_ = std::vector<double>(12, 0.0);
     }
+    if (tau_ff_nominal_nm_.size() != 12) {
+      RCLCPP_WARN(this->get_logger(), "tau_ff_nominal_nm size != 12, padding/truncating.");
+      tau_ff_nominal_nm_.resize(12, 0.0);
+    }
 
     publish_mit_mapped_ = this->declare_parameter<bool>("publish_mit_mapped_positions", true);
     mit_mapped_topic_ = this->declare_parameter<std::string>(
@@ -194,12 +214,18 @@ public:
     if (publish_feedback_joint_states_) {
       feedback_joint_states_pub_ = this->create_publisher<JointState>(
         feedback_joint_states_topic_, rclcpp::SensorDataQoS());
-      if (feedback_joint_states_timer_hz_ > 1e-3) {
-        const int64_t period_ns = static_cast<int64_t>(1e9 / feedback_joint_states_timer_hz_);
-        feedback_js_timer_ = this->create_wall_timer(
-          std::chrono::nanoseconds(period_ns),
-          std::bind(&MotorProtocolNode::OnFeedbackJointStatesTimer, this));
-      }
+    }
+    if (publish_motor_diagnostics_) {
+      diagnostics_pub_ = this->create_publisher<DiagnosticArray>(motor_diagnostics_topic_, 10);
+    }
+    if (
+      (publish_feedback_joint_states_ || publish_motor_diagnostics_) &&
+      feedback_joint_states_timer_hz_ > 1e-3)
+    {
+      const int64_t period_ns = static_cast<int64_t>(1e9 / feedback_joint_states_timer_hz_);
+      feedback_js_timer_ = this->create_wall_timer(
+        std::chrono::nanoseconds(period_ns),
+        std::bind(&MotorProtocolNode::OnFeedbackJointStatesTimer, this));
     }
 
     if (publish_mit_mapped_) {
@@ -235,6 +261,11 @@ public:
     ResetRuntimeTuning();
     last_commanded_mit_rad_.fill(std::numeric_limits<double>::quiet_NaN());
     last_feedback_champ_rad_.fill(std::numeric_limits<double>::quiet_NaN());
+    last_feedback_joint_vel_rad_s_.fill(std::numeric_limits<double>::quiet_NaN());
+    last_feedback_effort_nm_.fill(std::numeric_limits<double>::quiet_NaN());
+    last_feedback_mode_status_.fill(-1);
+    last_feedback_temp_c_.fill(std::numeric_limits<double>::quiet_NaN());
+    last_feedback_fault_mask_.fill(0);
     last_sent_champ_rad_.fill(std::numeric_limits<double>::quiet_NaN());
     boot_feedback_champ_rad_.fill(std::numeric_limits<double>::quiet_NaN());
     boot_feedback_captured_.fill(false);
@@ -259,9 +290,58 @@ public:
       joint_mit_max_rad_ = std::vector<double>(12, ProtocolCodec::kPMax);
     }
     RebuildMotorLimitTable();
+
+    on_set_params_handle_ = this->add_on_set_parameters_callback(
+      [this](const std::vector<rclcpp::Parameter> & parameters) {
+        return this->OnSetParameters(parameters);
+      });
   }
 
 private:
+  rcl_interfaces::msg::SetParametersResult OnSetParameters(
+    const std::vector<rclcpp::Parameter> & parameters)
+  {
+    rcl_interfaces::msg::SetParametersResult out;
+    out.successful = true;
+    out.reason = "ok";
+    for (const rclcpp::Parameter & p : parameters) {
+      const std::string & name = p.get_name();
+      if (name == "enable_joint_tau_ff") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_BOOL) {
+          out.successful = false;
+          out.reason = "enable_joint_tau_ff must be bool";
+          return out;
+        }
+        enable_joint_tau_ff_ = p.as_bool();
+        RCLCPP_WARN(
+          this->get_logger(), "Runtime param: enable_joint_tau_ff=%d", enable_joint_tau_ff_ ? 1 : 0);
+      } else if (name == "gravity_ff_scale") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+          out.successful = false;
+          out.reason = "gravity_ff_scale must be double";
+          return out;
+        }
+        gravity_ff_scale_ = p.as_double();
+        RCLCPP_WARN(this->get_logger(), "Runtime param: gravity_ff_scale=%.6f", gravity_ff_scale_);
+      } else if (name == "tau_ff_nominal_nm") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY) {
+          out.successful = false;
+          out.reason = "tau_ff_nominal_nm must be double[]";
+          return out;
+        }
+        const auto v = p.as_double_array();
+        if (v.size() != 12) {
+          out.successful = false;
+          out.reason = "tau_ff_nominal_nm must have 12 elements";
+          return out;
+        }
+        tau_ff_nominal_nm_.assign(v.begin(), v.end());
+        RCLCPP_WARN(this->get_logger(), "Runtime param: tau_ff_nominal_nm updated (12 doubles)");
+      }
+    }
+    return out;
+  }
+
   void OnTrajectory(const JointTrajectory::SharedPtr msg)
   {
     ++traj_cb_count_window_;
@@ -373,7 +453,7 @@ private:
     }
     const double use_kp = is_front ? runtime_kp_can0_ : runtime_kp_can1_;
     const double use_kd = is_front ? runtime_kd_can0_ : runtime_kd_can1_;
-    const double use_tau = is_front ? runtime_tau_can0_ : runtime_tau_can1_;
+    const double use_tau = ComputeMitTorqueFf(idx, is_front);
 
     const auto frame = ProtocolCodec::BuildMitControlFrame(
       route.bus,
@@ -443,7 +523,7 @@ private:
       }
       const double use_kp = is_front ? runtime_kp_can0_ : runtime_kp_can1_;
       const double use_kd = is_front ? runtime_kd_can0_ : runtime_kd_can1_;
-      const double use_tau = is_front ? runtime_tau_can0_ : runtime_tau_can1_;
+      const double use_tau = ComputeMitTorqueFf(idx, is_front);
       const auto frame = ProtocolCodec::BuildMitControlFrame(
         route.bus,
         route.motor_id,
@@ -541,6 +621,34 @@ private:
       const double champ_feedback = (feedback->current_angle - joint_offsets_rad_[idx]) / sign;
       const rclcpp::Time now = this->now();
       last_feedback_champ_rad_[idx] = champ_feedback;
+      // CHAMP 关节角速度：θ_champ = (θ_mit - offset)/sign ⇒ ω_champ ≈ ω_mit/sign（直连模型）
+      last_feedback_joint_vel_rad_s_[idx] = static_cast<double>(feedback->current_speed) / sign;
+      // effort：与 EL05 / MIT 协议同号的电机报告力矩 (Nm)；与 tau_ff_nominal_nm 同一约定，不经 joint_signs 二次取反
+      last_feedback_effort_nm_[idx] = static_cast<double>(feedback->current_torque);
+      last_feedback_mode_status_[idx] = static_cast<int>(feedback->mode_status);
+      last_feedback_temp_c_[idx] = static_cast<double>(feedback->current_temp);
+      {
+        uint32_t mask = 0;
+        if (feedback->error_status) {
+          mask |= 1u << 0;
+        }
+        if (feedback->hall_error) {
+          mask |= 1u << 1;
+        }
+        if (feedback->magnet_error) {
+          mask |= 1u << 2;
+        }
+        if (feedback->temp_error) {
+          mask |= 1u << 3;
+        }
+        if (feedback->current_error) {
+          mask |= 1u << 4;
+        }
+        if (feedback->voltage_error) {
+          mask |= 1u << 5;
+        }
+        last_feedback_fault_mask_[idx] = mask;
+      }
       last_feedback_stamp_ns_[idx] = now.nanoseconds();
       if (!boot_feedback_captured_[idx]) {
         boot_feedback_champ_rad_[idx] = champ_feedback;
@@ -601,20 +709,106 @@ private:
     if (publish_feedback_joint_states_ && feedback_joint_states_pub_) {
       PublishFeedbackJointStates();
     }
+    if (publish_motor_diagnostics_ && diagnostics_pub_) {
+      PublishMotorDiagnostics();
+    }
+  }
+
+  void PublishMotorDiagnostics()
+  {
+    if (!diagnostics_pub_) {
+      return;
+    }
+    DiagnosticArray da;
+    da.header.stamp = this->now();
+    for (size_t i = 0; i < DogMapper::kChampJointNames.size(); ++i) {
+      DiagnosticStatus st;
+      st.name = std::string("trotbot_can_bridge:motor_feedback:") + DogMapper::kChampJointNames[i];
+      st.hardware_id = std::to_string(static_cast<int>(DogMapper::kTemporaryIndexMap[i].motor_id));
+      st.level = DiagnosticStatus::OK;
+      st.message = "feedback";
+
+      auto push_kv = [&](const std::string & key, const std::string & val) {
+        KeyValue kv;
+        kv.key = key;
+        kv.value = val;
+        st.values.push_back(kv);
+      };
+
+      if (last_feedback_mode_status_[i] >= 0) {
+        push_kv("mode_status", std::to_string(last_feedback_mode_status_[i]));
+      } else {
+        push_kv("mode_status", "unknown");
+      }
+      if (std::isfinite(last_feedback_temp_c_[i])) {
+        push_kv("temp_c", std::to_string(last_feedback_temp_c_[i]));
+      } else {
+        push_kv("temp_c", "nan");
+      }
+
+      const uint32_t m = last_feedback_fault_mask_[i];
+      push_kv("fault_mask", std::to_string(m));
+      push_kv("fault_error_status", (m & (1u << 0)) ? "1" : "0");
+      push_kv("fault_hall", (m & (1u << 1)) ? "1" : "0");
+      push_kv("fault_magnet", (m & (1u << 2)) ? "1" : "0");
+      push_kv("fault_temp", (m & (1u << 3)) ? "1" : "0");
+      push_kv("fault_current", (m & (1u << 4)) ? "1" : "0");
+      push_kv("fault_voltage", (m & (1u << 5)) ? "1" : "0");
+
+      if (m != 0u) {
+        st.level = DiagnosticStatus::ERROR;
+        st.message = "motor fault bits set";
+      }
+
+      da.status.push_back(st);
+    }
+    diagnostics_pub_->publish(da);
   }
 
   void PublishFeedbackJointStates()
   {
+    if (!feedback_joint_states_pub_) {
+      return;
+    }
     JointState js;
     js.header.stamp = this->now();
-    js.name.reserve(DogMapper::kChampJointNames.size());
-    js.position.reserve(DogMapper::kChampJointNames.size());
-    for (size_t i = 0; i < DogMapper::kChampJointNames.size(); ++i) {
+    const size_t n = DogMapper::kChampJointNames.size();
+    js.name.reserve(n);
+    js.position.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
       js.name.emplace_back(DogMapper::kChampJointNames[i]);
       const double pos = std::isfinite(last_feedback_champ_rad_[i]) ? last_feedback_champ_rad_[i] : 0.0;
       js.position.emplace_back(pos);
     }
+    if (publish_feedback_velocity_effort_) {
+      const double nan_vel = std::numeric_limits<double>::quiet_NaN();
+      const double nan_eff = std::numeric_limits<double>::quiet_NaN();
+      js.velocity.assign(n, 0.0);
+      js.effort.assign(n, 0.0);
+      for (size_t i = 0; i < n; ++i) {
+        const bool v_ok = std::isfinite(last_feedback_joint_vel_rad_s_[i]);
+        const bool e_ok = std::isfinite(last_feedback_effort_nm_[i]);
+        if (feedback_joint_fill_nan_) {
+          js.velocity[i] = v_ok ? last_feedback_joint_vel_rad_s_[i] : nan_vel;
+          js.effort[i] = e_ok ? last_feedback_effort_nm_[i] : nan_eff;
+        } else {
+          js.velocity[i] = v_ok ? last_feedback_joint_vel_rad_s_[i] : 0.0;
+          js.effort[i] = e_ok ? last_feedback_effort_nm_[i] : 0.0;
+        }
+      }
+    }
     feedback_joint_states_pub_->publish(js);
+  }
+
+  double ComputeMitTorqueFf(size_t idx, bool is_front) const
+  {
+    const double bus_tau = is_front ? runtime_tau_can0_ : runtime_tau_can1_;
+    if (!enable_joint_tau_ff_) {
+      return Clamp(bus_tau, ProtocolCodec::kTMin, ProtocolCodec::kTMax);
+    }
+    const double nominal = idx < tau_ff_nominal_nm_.size() ? tau_ff_nominal_nm_[idx] : 0.0;
+    const double tau = bus_tau + gravity_ff_scale_ * nominal;
+    return Clamp(tau, ProtocolCodec::kTMin, ProtocolCodec::kTMax);
   }
 
   bool IsEnabledMode(int mode_status) const
@@ -864,6 +1058,13 @@ private:
   bool publish_feedback_joint_states_{true};
   std::string feedback_joint_states_topic_;
   double feedback_joint_states_timer_hz_{50.0};
+  bool publish_feedback_velocity_effort_{true};
+  bool feedback_joint_fill_nan_{true};
+  bool publish_motor_diagnostics_{false};
+  std::string motor_diagnostics_topic_;
+  bool enable_joint_tau_ff_{false};
+  double gravity_ff_scale_{0.5};
+  std::vector<double> tau_ff_nominal_nm_;
   bool use_joint_cmd_limits_{true};
   std::vector<double> joint_cmd_min_rad_;
   std::vector<double> joint_cmd_max_rad_;
@@ -900,6 +1101,11 @@ private:
   rclcpp::Publisher<JointState>::SharedPtr mapped_positions_pub_;
   std::array<double, 256> last_commanded_mit_rad_{};
   std::array<double, 12> last_feedback_champ_rad_{};
+  std::array<double, 12> last_feedback_joint_vel_rad_s_{};
+  std::array<double, 12> last_feedback_effort_nm_{};
+  std::array<int, 12> last_feedback_mode_status_{};
+  std::array<double, 12> last_feedback_temp_c_{};
+  std::array<uint32_t, 12> last_feedback_fault_mask_{};
   std::array<double, 12> last_sent_champ_rad_{};
   std::array<double, 12> latest_input_champ_rad_{};
   std::array<double, 12> boot_feedback_champ_rad_{};
@@ -944,6 +1150,8 @@ private:
   rclcpp::Publisher<UInt8MultiArray>::SharedPtr tx_pub_;
   rclcpp::Publisher<String>::SharedPtr feedback_pub_;
   rclcpp::Publisher<JointState>::SharedPtr feedback_joint_states_pub_;
+  rclcpp::Publisher<DiagnosticArray>::SharedPtr diagnostics_pub_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr on_set_params_handle_;
   rclcpp::TimerBase::SharedPtr feedback_js_timer_;
   rclcpp::TimerBase::SharedPtr tx_refresh_timer_;
   rclcpp::TimerBase::SharedPtr tx_stats_timer_;

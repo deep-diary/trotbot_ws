@@ -32,6 +32,21 @@
     feedback_joint_states_topic: /joint_states_feedback
     # 定时发布反馈 JointState（Hz）；与 CAN 帧解耦，门禁未开/无总线反馈时仍供 RViz robot_state_publisher_feedback 用。≤0 则关闭定时器（不推荐）。
     feedback_joint_states_timer_hz: 50.0
+    # --- RQ-012：JointState.velocity（rad/s CHAMP 语义）、effort（Nm，EL05 电机报告力矩，与 MIT tau 同号约定）---
+    publish_feedback_velocity_effort: true
+    # true：尚未收到该关节反馈时 velocity/effort 填 NaN；false：填 0（慎用：RViz 部分插件对 NaN 不友好时可将此项设为 false）
+    feedback_joint_fill_nan: true
+    # RQ-012 可选：模式字 / 温度 / 离散故障位 → diagnostic_msgs/DiagnosticArray（不经字符串日志）
+    publish_motor_diagnostics: false
+    motor_diagnostics_topic: /diagnostics
+
+    # --- RQ-022：MIT 帧 tau_ff = Clamp(runtime_tau_bus + gravity_ff_scale * tau_ff_nominal_nm[i], kTMin, kTMax) ---
+    # runtime_tau_bus 仍来自 default_tau_ff + /mit_gains_cmd 按前后总线（can0/can1）在线调节。
+    enable_joint_tau_ff: false
+    gravity_ff_scale: 0.5
+    # 顺序同 DogMapper::kChampJointNames（base_lf1…）；符号与 EL05/MIT 一致；不经 joint_signs 二次取反
+    # 站立实测：约 8s、120 帧 `effort` 均值（仅作前馈初值；左右/前后不对称来自载荷与标定，属常见现象）
+    tau_ff_nominal_nm: [0.100772, 0.150262, -0.635247, -0.055963, -0.044155, 0.919803, -0.154716, -0.476715, -1.278698, 0.220113, 0.171255, 1.020762]
 
     # 启动平滑与发送限速（减少趴姿->站立突变）
     enable_startup_smoothing: true

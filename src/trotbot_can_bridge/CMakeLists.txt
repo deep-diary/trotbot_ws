@@ -11,6 +11,7 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 
 include_directories(include)
 
@@ -36,6 +37,7 @@ add_executable(motor_protocol_node
 )
 ament_target_dependencies(motor_protocol_node
   rclcpp
+  diagnostic_msgs
   sensor_msgs
   std_msgs
   trajectory_msgs

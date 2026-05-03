@@ -36,7 +36,7 @@ sudo apt-get install -y can-utils
 
 `/can_tx_frames`（`motor_protocol_node` → `can_transport_node`）默认使用 **Reliable + `KeepLast(can_tx_frames_qos_depth)`**（深度默认 **4000**，与 `control_gains.yaml` / `bridge.yaml` 一致），避免高频下发时 **DDS 丢帧**导致总线统计假象（ISSUE-0002）。
 
-`can_bridge.launch.py` 现默认同时启动 `power_sequence_node`（可用 `use_power_sequence:=false` 关闭）。该节点用于遥控上/下电编排：发布 `/power_sequence/gate_open` 控制轨迹门禁，并在启停阶段发布 `body_pose` 做 z 轴软升降。启动流程可选 **主动上报**：`power_sequence.yaml` 中 **`enable_active_report_in_startup`**（默认 true）、**`enable_active_report_at_launch`**（默认 true：节点启动后 **`active_report_boot_delay_s`** 秒即在 **Idle** 发 0x7026 + 0x18 ON，**不必等 start**）、**`active_report_hz`**（默认 10，写入 **0x7026**）、**`active_report_master_id`**（默认 -1 与 `motor_master_id` 相同）。**下电 `Disable` 只发失能、不关闭主动上报**，以便 shutdown 后 RViz 等仍能靠 **0x18** 刷新；需要「上报关 + 失能」请用 **`el05_motor_cansend.sh reset`**。**0x18** 上报帧由 **`motor_protocol_node`** 与 **0x02** 一并解析进 `/joint_states_feedback`。
+`can_bridge.launch.py` 现默认同时启动 `power_sequence_node`（可用 `use_power_sequence:=false` 关闭）。该节点用于遥控上/下电编排：发布 `/power_sequence/gate_open` 控制轨迹门禁，并在启停阶段发布 `body_pose` 做 z 轴软升降。启动流程可选 **主动上报**：`power_sequence.yaml` 中 **`enable_active_report_in_startup`**（默认 true）、**`enable_active_report_at_launch`**（默认 true：节点启动后 **`active_report_boot_delay_s`** 秒即在 **Idle** 发 0x7026 + 0x18 ON，**不必等 start**）、**`active_report_hz`**（默认 10，写入 **0x7026**）、**`active_report_master_id`**（默认 -1 与 `motor_master_id` 相同）。**下电 `Disable` 只发失能、不关闭主动上报**，以便 shutdown 后 RViz 等仍能靠 **0x18** 刷新；需要「上报关 + 失能」请用 **`el05_motor_cansend.sh reset`**。**0x18** 上报帧由 **`motor_protocol_node`** 与 **0x02** 一并解析进 **`/joint_states_feedback`**（位置）；参数 **`publish_feedback_velocity_effort`** 开启时在 **`velocity`**（rad/s，CHAMP）、**`effort`**（Nm，电机报告）填充结构化反馈；**`publish_motor_diagnostics`** 可向 **`motor_diagnostics_topic`**（默认 **`/diagnostics`**）发 **`DiagnosticArray`**。**RQ-022**：**`enable_joint_tau_ff`**、**`tau_ff_nominal_nm`**、**`gravity_ff_scale`** 控制 MIT **`tau_ff`** 按关节叠加（详见 **`docs/trotbot/架构说明.md`**、`control_gains.yaml` 注释）。
 
 默认按键（`power_sequence.yaml` 可改）：
 
@@ -388,6 +388,20 @@ ros2 topic pub --once /mit_gains_cmd std_msgs/msg/String "{data: 'reset=1'}"
 ```
 
 节点会周期打印当前生效参数（`can0/can1` 分开）和命令-反馈误差统计，便于联调闭环。
+
+### 在线参数：关节前馈表（RQ-022）
+
+以下可在**不重启** `motor_protocol_node` 时生效（`ros2 param set` 成功后在日志中有 `Runtime param:`）：
+
+```bash
+ros2 param set /motor_protocol_node enable_joint_tau_ff false
+ros2 param set /motor_protocol_node enable_joint_tau_ff true
+ros2 param set /motor_protocol_node gravity_ff_scale 0.3
+# 12 维 double 数组，顺序同 CHAMP 关节（见 dog_mapper.hpp）
+ros2 param set /motor_protocol_node tau_ff_nominal_nm "[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]"
+```
+
+说明：`tau_ff_nominal_nm` **必须恰好 12 个数**。仅改 YAML 默认值需重启节点；在线修改只影响当前进程。
 
 ### 启动平滑与发送限位（新增）
 
