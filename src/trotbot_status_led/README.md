@@ -103,7 +103,9 @@ ros2 launch trotbot_status_led status_led.launch.py params_file:=/path/to/my_par
 
 填写模板见 [`docs/RK3588_GPIO_WS2812_HAL.md`](docs/RK3588_GPIO_WS2812_HAL.md)（**GPIO3_C1**、**Pin16**、`gpiochip`+line、镜像记录）。
 
-## systemd 示例（现场按需改路径与单元名）
+## systemd 示例
+
+- **只跑灯带**（不启整机）可用下例；**更常见**是开机直接起 **`trotbot_basic`**（含 `use_status_led:=true`），见仓库根 **`README.md`「开机自启（systemd）」** 与包内 **`trotbot/config/systemd/trotbot-basic.service.example`**。
 
 ```ini
 [Unit]
@@ -121,7 +123,7 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
-将 `ExecStart` 与整机 bringup 对齐；通常灯带节点与 `trotbot_basic` 同会话启动时，用 **同一 install/setup** 与 **`use_status_led:=true`** 的顶层 launch 更合适。
+将 `ExecStart` 与整机 bringup 对齐；灯带与 `trotbot_basic` 同进程时，用 **同一 install/setup** 与 **`use_status_led:=true`** 的顶层 launch 即可，**不要**再单独 enable 上例，避免双起 `status_led`。
 
 ## 验证
 

@@ -285,9 +285,26 @@ ros2 launch trotbot trotbot_basic.launch.py \
   use_teleop:=true \
   use_joystick:=true \
   use_xterm:=false \
-  rviz:=false\
+  rviz:=false \
   use_status_led:=true
 ```
+
+#### 开机自启（systemd）
+
+将示例单元复制为系统服务并修改 **`User`**、**`/home/bot/trotbot_ws`** 为你的账户与工作空间路径：
+
+```bash
+source /opt/ros/humble/setup.bash && source ~/trotbot_ws/install/setup.bash
+sudo cp "$(ros2 pkg prefix trotbot)/share/trotbot/config/systemd/trotbot-basic.service.example" /etc/systemd/system/trotbot-basic.service
+sudo nano /etc/systemd/system/trotbot-basic.service   # 改 User、WorkingDirectory、ExecStart 中的路径
+sudo systemctl daemon-reload
+sudo systemctl enable --now trotbot-basic.service
+journalctl -u trotbot-basic.service -f
+```
+
+**灯带与 sudo**：`use_status_led:=true` 时，`status_led` 默认 **`sudo -E`** 启动灯节点；systemd 无交互终端，若未配置 **NOPASSWD**，请在 **`ExecStart` 同一行末尾**追加 **`status_led_use_sudo:=false`**（适用 **spidev** + 用户已在 **dialout** 等组）。详见 `src/trotbot_status_led/README.md`。
+
+**遥控**：无图形、无分配 TTY 时，键盘遥控无法像终端里一样使用；手柄需运行用户在 **`input`** 组。
 
 ### 4) 遥控：键盘 / PS4 手柄（可选）
 

@@ -1,0 +1,11 @@
+# 将 spidev 节点属组设为 dialout、660，使已加入 dialout 的用户在重启后仍能打开 /dev/spidev*。
+#（仅 chmod 666 在每次重启/热插拔后都会丢失，udev 才持久。）
+#
+# 安装：
+#   sudo install -m 644 …/99-trotbot-spidev-dialout.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#   重新登录或 unplug/plug 相关 SPI（或 reboot）
+#
+# 若系统把 spidev 归到其他组，请 ls -l /dev/spidev0.0 后按需改 GROUP。
+
+KERNEL=="spidev*", GROUP="dialout", MODE="0660"

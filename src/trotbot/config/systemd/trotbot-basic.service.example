@@ -1,0 +1,28 @@
+# 复制到系统并启用（路径/用户名请按实机修改）：
+#   sudo cp "$(ros2 pkg prefix trotbot)/share/trotbot/config/systemd/trotbot-basic.service.example" /etc/systemd/system/trotbot-basic.service
+#   sudo nano /etc/systemd/system/trotbot-basic.service   # 改 User、WorkingDirectory、ExecStart 中的家目录与工作空间
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now trotbot-basic.service
+#
+# 说明：
+# - use_xterm:=false / rviz:=false 适合无图形、SSH 板端开机自启。
+# - use_status_led:=true 时，status_led.launch 默认 use_sudo:=true；无交互密码需 sudo NOPASSWD，
+#   或灯带用 spidev 且无须 root 时在 ExecStart 末尾追加：status_led_use_sudo:=false
+# - 键盘遥控在无 TTY 的 systemd 下通常不可用；若只需手柄，可保留 use_teleop:=true（joy 需用户在 input 组）。
+
+[Unit]
+Description=TrotBot trotbot_basic bringup (ROS 2)
+After=network-online.target
+
+[Service]
+Type=simple
+User=bot
+Group=bot
+WorkingDirectory=/home/bot/trotbot_ws
+Environment="ROS_DOMAIN_ID=0"
+ExecStart=/bin/bash -lc 'source /opt/ros/humble/setup.bash && source /home/bot/trotbot_ws/install/setup.bash && exec ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true use_teleop:=true use_joystick:=true use_xterm:=false rviz:=false use_status_led:=true'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

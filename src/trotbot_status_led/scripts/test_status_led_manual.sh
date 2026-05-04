@@ -54,6 +54,17 @@ echo "== 2) 后台启动 status_led_node =="
 echo "    （默认 rockchip_mmap 需访问 /dev/mem，若立刻 mmap 失败请改用: sudo -E env PATH=\"\$PATH\" bash -lc 'source ... && ros2 run ...'）"
 ros2 run trotbot_status_led status_led_node --ros-args --params-file "$PARAMS" &
 LED_PID=$!
+
+cleanup() {
+  echo ""
+  echo "== 中断：结束 status_led_node (PID ${LED_PID}) =="
+  kill "$LED_PID" 2>/dev/null || true
+  wait "$LED_PID" 2>/dev/null || true
+  pkill -f "status_led_node" 2>/dev/null || true
+  exit 130
+}
+trap cleanup INT TERM
+
 sleep 1.5
 
 pub_state() {
@@ -89,7 +100,10 @@ pub_state Precheck
 pub_gate false
 sleep 3
 
+trap - INT TERM
+
 echo "== 4) 结束节点 (PID $LED_PID) =="
 kill "$LED_PID" 2>/dev/null || true
 wait "$LED_PID" 2>/dev/null || true
+pkill -f "status_led_node" 2>/dev/null || true
 echo "完成。请将每一步颜色与脚本字母对应反馈。"
