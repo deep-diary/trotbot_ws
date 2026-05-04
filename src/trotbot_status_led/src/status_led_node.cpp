@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "trotbot_status_led/ws2812_gpiod.hpp"
 #include "trotbot_status_led/ws2812_rockchip_mmap.hpp"
+#include "trotbot_status_led/ws2812_spidev.hpp"
 #include "trotbot_status_led/ws2812_timing.hpp"
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
@@ -210,7 +211,7 @@ public:
     }
     timing_ = timing;
 
-    ws2812_backend_ = this->declare_parameter<std::string>("ws2812_backend", "rockchip_mmap");
+    ws2812_backend_ = this->declare_parameter<std::string>("ws2812_backend", "spidev");
     mmap_gpio_phys_base_ = this->declare_parameter<int64_t>("mmap_gpio_phys_base", 0xFEC40000LL);
     if (mmap_gpio_phys_base_ < 0) {
       mmap_gpio_phys_base_ = 0xFEC40000LL;
@@ -222,18 +223,43 @@ public:
       global_brightness_ = 1.0;
     }
 
+    debug_fixed_color_ = this->declare_parameter<bool>("debug_fixed_color", false);
+    {
+      const int dr = this->declare_parameter<int>("debug_fixed_r", 0);
+      const int dg = this->declare_parameter<int>("debug_fixed_g", 0);
+      const int db = this->declare_parameter<int>("debug_fixed_b", 0);
+      debug_fixed_r_ = static_cast<uint8_t>(std::max(0, std::min(255, dr)));
+      debug_fixed_g_ = static_cast<uint8_t>(std::max(0, std::min(255, dg)));
+      debug_fixed_b_ = static_cast<uint8_t>(std::max(0, std::min(255, db)));
+    }
+
     const std::string map_path = ResolveMapPath(state_map_file_);
     std::string err;
     if (map_path.empty() || !LoadMapFile(map_path, &map_, &err)) {
-      RCLCPP_ERROR(this->get_logger(), "Failed to load status map '%s': %s", map_path.c_str(), err.c_str());
+      if (!debug_fixed_color_) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to load status map '%s': %s", map_path.c_str(), err.c_str());
+      } else {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "status map 未加载 (%s)，但 debug_fixed_color=true，仅用固定 RGB 发灯",
+          err.c_str());
+      }
       map_loaded_ = false;
     } else {
       map_loaded_ = true;
       RCLCPP_INFO(this->get_logger(), "Loaded status map from %s (%zu rules)", map_path.c_str(), map_.rules.size());
     }
 
+    if (debug_fixed_color_) {
+      RCLCPP_INFO(
+        this->get_logger(),
+        "debug_fixed_color：忽略灯语映射，全环固定 RGB=(%u,%u,%u) × global_brightness=%.3f",
+        debug_fixed_r_, debug_fixed_g_, debug_fixed_b_, global_brightness_);
+    }
+
     hardware_ok_ = false;
     use_gpio_mmap_ = false;
+    use_spidev_ = false;
     if (!simulate_hardware_) {
       if (ws2812_backend_ == "rockchip_mmap") {
         if (gpio_line_offset_ < 0 || gpio_line_offset_ > 31) {
@@ -310,9 +336,51 @@ public:
             gpiochip_.c_str(), gpio_line_offset_);
 #endif
         }
+      } else if (ws2812_backend_ == "spidev") {
+        const std::string spidev_path = this->declare_parameter<std::string>("spidev_path", "/dev/spidev0.0");
+        const int spd_hz = this->declare_parameter<int>("spidev_max_speed_hz", 6400000);
+        const int rst_bytes = this->declare_parameter<int>("spidev_reset_trailer_bytes", 120);
+        const int pre_idle_us = this->declare_parameter<int>("spidev_pre_write_idle_us", 0);
+        const int lead_zeros = this->declare_parameter<int>("spidev_leading_spi_zero_bytes", 0);
+        const int b0 = this->declare_parameter<int>("spidev_bit0_byte", -1);
+        const int b1 = this->declare_parameter<int>("spidev_bit1_byte", -1);
+        const uint8_t byte0 =
+          (b0 >= 0 && b0 <= 255) ? static_cast<uint8_t>(b0) : static_cast<uint8_t>(0xC0);
+        const uint8_t byte1 =
+          (b1 >= 0 && b1 <= 255) ? static_cast<uint8_t>(b1) : static_cast<uint8_t>(0xF8);
+        const uint32_t hz_u =
+          spd_hz > 0 ? static_cast<uint32_t>(spd_hz) : 6400000U;
+        const unsigned trailer =
+          rst_bytes > 0 ? static_cast<unsigned>(rst_bytes) : 120U;
+        const uint32_t idle_u =
+          pre_idle_us > 0 ? static_cast<uint32_t>(pre_idle_us) : 0U;
+        const unsigned lead_z =
+          lead_zeros > 0 ? static_cast<unsigned>(lead_zeros) : 0U;
+        if (spidev_.Init(spidev_path, hz_u, trailer, byte0, byte1, idle_u, lead_z)) {
+          hardware_ok_ = true;
+          use_spidev_ = true;
+          RCLCPP_INFO(
+            this->get_logger(),
+            "WS2812 spidev ok: path=%s speed_hz=%u reset_trailer_bytes=%u enc=(0x%02x,0x%02x) "
+            "pre_write_idle_us=%u leading_spi_zero_bytes=%u leds=%d",
+            spidev_path.c_str(), hz_u, trailer, byte0, byte1, idle_u, lead_z, led_count_);
+          if (!spidev_.SpidevIoctlOk()) {
+            RCLCPP_WARN(
+              this->get_logger(),
+              "SPI 节点未响应标准 spidev ioctl（常见于鲁班猫 rockchip,spidev → /dev/rkspi-dev*）。"
+              " 将以 write() 发码；实际波特率由 overlay 中 spi-max-frequency 决定，若颜色不对请对照 docs/SPI_WS2812_RK3588.md 调整编码或时钟。");
+          }
+        } else {
+          RCLCPP_WARN(
+            this->get_logger(),
+            "WS2812 spidev 打开失败 path=%s（检查设备树是否启用 SPI+spidev、节点是否存在、用户是否在 dialout 组）。"
+            " 见 docs/SPI_WS2812_RK3588.md",
+            spidev_path.c_str());
+        }
       } else {
         RCLCPP_ERROR(
-          this->get_logger(), "未知 ws2812_backend=%s（仅 rockchip_mmap / gpiod）", ws2812_backend_.c_str());
+          this->get_logger(),
+          "未知 ws2812_backend=%s（rockchip_mmap / gpiod / spidev）", ws2812_backend_.c_str());
       }
     } else {
       RCLCPP_WARN(this->get_logger(), "simulate_hardware=true: no GPIO writes.");
@@ -363,6 +431,7 @@ public:
   {
     mmap_.Shutdown();
     gpiod_.Shutdown();
+    spidev_.Shutdown();
   }
 
 private:
@@ -372,7 +441,7 @@ private:
 
   void OnTimer()
   {
-    if (!map_loaded_) {
+    if (!debug_fixed_color_ && !map_loaded_) {
       return;
     }
     const double dt = 1.0 / refresh_hz_;
@@ -381,7 +450,13 @@ private:
     uint8_t r = 0;
     uint8_t g = 0;
     uint8_t b = 0;
-    LookupRgb(map_, last_state_, last_gate_, phase_time_s_, &r, &g, &b);
+    if (debug_fixed_color_) {
+      r = debug_fixed_r_;
+      g = debug_fixed_g_;
+      b = debug_fixed_b_;
+    } else {
+      LookupRgb(map_, last_state_, last_gate_, phase_time_s_, &r, &g, &b);
+    }
 
     r = static_cast<uint8_t>(std::min(255.0, std::floor(static_cast<double>(r) * global_brightness_ + 0.5)));
     g = static_cast<uint8_t>(std::min(255.0, std::floor(static_cast<double>(g) * global_brightness_ + 0.5)));
@@ -397,6 +472,8 @@ private:
     if (hardware_ok_ && !simulate_hardware_) {
       if (use_gpio_mmap_) {
         (void)mmap_.Show(buf, static_cast<unsigned int>(led_count_));
+      } else if (use_spidev_) {
+        (void)spidev_.Show(buf, static_cast<unsigned int>(led_count_));
       } else {
         (void)gpiod_.Show(buf, static_cast<unsigned int>(led_count_));
       }
@@ -405,9 +482,10 @@ private:
 
   Ws2812RockchipMmap mmap_;
   Ws2812Gpiod gpiod_;
+  Ws2812Spidev spidev_;
   Ws2812TimingNs timing_{};
 
-  std::string ws2812_backend_{"rockchip_mmap"};
+  std::string ws2812_backend_{"spidev"};
   int64_t mmap_gpio_phys_base_{0xFEC40000LL};
 
   std::string gpiochip_;
@@ -419,6 +497,10 @@ private:
   std::string gate_topic_;
   double refresh_hz_{50.0};
   bool simulate_hardware_{false};
+  bool debug_fixed_color_{false};
+  uint8_t debug_fixed_r_{0};
+  uint8_t debug_fixed_g_{0};
+  uint8_t debug_fixed_b_{0};
   bool mlock_all_{false};
   int realtime_sched_priority_{-1};
 
@@ -430,6 +512,7 @@ private:
 
   bool hardware_ok_{false};
   bool use_gpio_mmap_{false};
+  bool use_spidev_{false};
 
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr state_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr gate_sub_;

@@ -285,7 +285,8 @@ ros2 launch trotbot trotbot_basic.launch.py \
   use_teleop:=true \
   use_joystick:=true \
   use_xterm:=false \
-  rviz:=false
+  rviz:=false\
+  use_status_led:=true
 ```
 
 ### 4) 遥控：键盘 / PS4 手柄（可选）

@@ -15,7 +15,7 @@
 | **CAN2（后腿总线）** | **Pin 38 = CAN2_RX**，**Pin 40 = CAN2_TX**（手绘上曾标为 CAN1，实为 **SoC CAN2**）→ 启用 overlay 后接口名常为 **`can1`**（本机：`can1` ↔ `fea70000.can`）。后腿 6 电机 ID `51/52/53/61/62/63`。**务必用 `ip -details link show` 核对 `parentdev`**。 |
 | **CAN 收发器电源（由开发板供电）** | **Pin 17 = 3.3V 输出**供 **CAN 收发芯片** VCC；**Pin 20 = GND** 作为该路供电回流（与手绘「Power Out」一致）。 |
 | **外部电源输入（5V）** | **Pin 4 = 5V**、**Pin 6 = GND** 作为 **整机外部 5V 电源输入**（手绘「Power In」）。 |
-| **WS2812 灯带** | **Pin 2 = 5V**、**Pin 14 = GND**、**Pin 16 = 数据线（DIN，`GPIO3_C1`）**；硬件已接线。**`软件需求清单.md` RQ-023**：ROS 灯效节点仍待落地。 |
+| **WS2812 灯带** | **Pin 2 = 5V**、**Pin 14 = GND**；数据线 **DIN** 软件默认可接 **Pin19（`SPI0_MOSI_M2`）** 走 **SPI/spidev**，或接 **Pin16（`GPIO3_C1`）** 走 **GPIO/mmap**（见 **`trotbot_status_led`** 参数 **`ws2812_backend`**）。 |
 | **Pin 1（3.3V）** | 手绘中为 **不使用**（打叉）；本机配电不从此脚取电，表中备注「未接」。 |
 | **其它 40PIN** | 未在红圈内的脚：**当前狗子连线未使用**；手柄等仍可按惯例走 USB。扩展时请避开 MIPI 占用脚（§2）及已有配电。 |
 
@@ -29,7 +29,7 @@
 | **CAN 收发器 3.3V 供电** | **17**（3.3V 出）、**20**（GND） | 由鲁班猫排针向 **CAN 收发芯片**供电（Power Out）。 |
 | **CAN0** | **7**（RX）、**11**（TX） | 接前腿路径收发器 MCU 侧 → **`can0`**。 |
 | **CAN2** | **38**（RX）、**40**（TX） | 接后腿路径收发器 MCU 侧 → 常为 **`can1`**（硬件 CAN2）。 |
-| **WS2812** | **2**（5V）、**14**（GND）、**16**（DIN） | 灯带供电 + 数据；SoC 映射 **`GPIO3_C1`**。 |
+| **WS2812** | **2**（5V）、**14**（GND）、**16**（DIN，GPIO）或 **19**（DIN，SPI MOSI） | 供电同左；**Pin16** 为 bitbang 方案；**Pin19** 为 SPI 发码方案（见仓库 **`trotbot_status_led/docs/SPI_WS2812_RK3588.md`**）。 |
 | **未使用** | **1**（板上 3.3V） | 手绘标明不接。 |
 
 ---
@@ -63,10 +63,10 @@
 | **13** | PWM3_IR_M3，PDM1_SDIO_M1 | GPIO1_A7，39 | 当前狗子未用。 |
 | **14** | **GND** | — | **实机：WS2812 灯带地**，与 Pin2（5V）、Pin16（DIN）同组。 |
 | **15** | PDM1_SDI1_M1 | GPIO1_B0，40 | 当前狗子未用。 |
-| **16** | **GPIO3_C1**，UART7_RX_M1，SPI1_CLK_M1 | 113 | **实机：WS2812 DIN**；**RQ-023** 软件灯效节点待实现。 |
+| **16** | **GPIO3_C1**，UART7_RX_M1，SPI1_CLK_M1 | 113 | **可选用：WS2812 DIN**（**`ws2812_backend:=rockchip_mmap`** / GPIO）。 |
 | **17** | **3.3V** | — | **实机：3.3V 输出供 CAN 收发芯片**（Power Out，与 Pin20 GND 成对）。 |
 | **18** | UART9_RTSN_M2 | GPIO3_D2，122 | 当前狗子未用。 |
-| **19** | UART4_RX_M2，SPI0_MOSI_M2，PDM1_SDI3_M1 | GPIO1_B2，42 | 当前狗子未用。 |
+| **19** | UART4_RX_M2，**SPI0_MOSI_M2**，PDM1_SDI3_M1 | GPIO1_B2，42 | **可选用：WS2812 DIN**（**`ws2812_backend:=spidev`**）；需在设备树启用 **SPI0 + spidev**，见 **`trotbot_status_led/docs/SPI_WS2812_RK3588.md`**。 |
 | **20** | **GND** | — | **实机：CAN 收发器供电地**（Power Out），与 Pin17 成对。 |
 | **21** | SPI0_MISO_M2，PDM1_SDI2_M1 | GPIO1_B1，41 | 当前狗子未用。 |
 | **22** | UART9_RX_M2 | GPIO3_D4，124 | 当前狗子未用。 |

@@ -1,6 +1,6 @@
 # trotbot_status_led（RQ-023）
 
-鲁班猫 RK3588 上通过 **libgpiod** 驱动 **WS2812** 圆环（默认 **16** 灯），订阅 `power_sequence_node` 发布的 **`/power_sequence/state`**、**`/power_sequence/gate_open`**，按 YAML 显示灯语。
+鲁班猫 RK3588 上驱动 **WS2812** 圆环（默认 **16** 灯）：优先 **`spidev`（SPI MOSI）** 或 **`rockchip_mmap`（GPIO 寄存器）** / **`gpiod`**；订阅 `power_sequence_node` 的 **`/power_sequence/state`**、**`/power_sequence/gate_open`**，按 YAML 显示灯语。
 
 ## 依赖
 
@@ -19,7 +19,10 @@ source install/setup.bash
 
 ### 完整编译 + 实机灯语自测（可复制）
 
-在 **工作空间根目录** 执行；**`rockchip_mmap` 需 `sudo` 才能 mmap `/dev/mem`**，否则灯带不刷新（见下节「常见故障」）。
+在 **工作空间根目录** 执行。
+
+- 默认参数为 **`ws2812_backend: spidev`**：只需 **`/dev/spidev*`** 存在且用户有权限（常见：`dialout` 组），**一般不必 sudo**。
+- 若仍使用 **`rockchip_mmap`**：**必须 `sudo`** 才能 mmap **`/dev/mem`**（见「常见故障」）。
 
 ```bash
 cd ~/trotbot_ws
@@ -27,6 +30,12 @@ source /opt/ros/humble/setup.bash
 colcon build --packages-select trotbot_status_led --allow-overriding trotbot_status_led
 source install/setup.bash
 
+bash ~/trotbot_ws/install/trotbot_status_led/share/trotbot_status_led/scripts/test_status_led_manual.sh
+```
+
+使用 **`rockchip_mmap`** 时用：
+
+```bash
 sudo -E env "PATH=$PATH" bash -lc '
   source /opt/ros/humble/setup.bash
   source ~/trotbot_ws/install/setup.bash
@@ -35,22 +44,24 @@ sudo -E env "PATH=$PATH" bash -lc '
 '
 ```
 
-若工作空间不在 `~/trotbot_ws`，把上述路径与 `TROTBOT_WS` 改成你的实际目录即可。
+若工作空间不在 `~/trotbot_ws`，把路径与 **`TROTBOT_WS`** 改成实际目录。
 
-也可直接 **`sudo bash ~/trotbot_ws/install/.../scripts/test_status_led_manual.sh`**：脚本会沿目录向上查找 **`install/setup.bash`**（兼容「从 `install` 下运行」与「从 `src/.../scripts` 运行」）。若仍失败，请 **`export TROTBOT_WS=/你的/trotbot_ws`**。
+也可 **`bash …/install/.../scripts/test_status_led_manual.sh`**：脚本会向上查找 **`install/setup.bash`**。失败时请 **`export TROTBOT_WS=/你的/trotbot_ws`**。
 
-## 后端：rockchip_mmap（默认）与 gpiod
+## 后端：`spidev`（默认）、`rockchip_mmap`、`gpiod`
 
-- **`ws2812_backend: rockchip_mmap`（默认）**：通过 `/dev/mem` mmap GPIO bank。**RK3588 使用 Rockchip GPIO 控制器 V2**：**DR/DDR 寄存器布局与 V1 不同**，须按内核 **`gpio-rockchip.c`** 的 **掩码写单比特**（不可简单 `*DR |= bit`）。本实现已按 V2 实现。**启动时用 libgpiod 做一次 `request_output` 后立刻 `release`**（促使 Pad→GPIO，且不与 mmap 长期争用 DR）。**需 `sudo` 打开 `/dev/mem`**；并需能访问 **`/dev/gpiochip*`**。
-- **`ws2812_backend: gpiod`**：走 libgpiod。因 **`gpiod_line_set_value` 多为 ioctl，单次耗时可达微秒级**，远大于 WS2812 位宽（约 1.25µs），常见症状为**各色灯语看起来都像全亮、发白**。若必须用 gpiod，仅适合验证接线；量产请用 **mmap** 或其它 DMA/SPI 方案。
+- **`ws2812_backend: spidev`（推荐）**：通过 **`/dev/spidevX.Y`** 用 **MOSI** 送出编码后的字节流；波形由 **SPI 硬件** 移位，**CPU 抖动小**，通常**不需 root**。鲁班猫 **40PIN Pin19 = `SPI0_MOSI_M2`**，灯带 **DIN** 接该脚（详见 [`docs/SPI_WS2812_RK3588.md`](docs/SPI_WS2812_RK3588.md)）。需在设备树中 **启用对应 SPI 控制器 + `spidev`**，`ls /dev/spidev*` 应可见设备。
+- **`ws2812_backend: rockchip_mmap`**：通过 **`/dev/mem`** mmap GPIO。**RK3588 为 GPIO V2**，须 **掩码写 DR**；启动时用 **gpiod 一次性 mux**。**需 `sudo`**。
+- **`gpiod`**：**ioctl 过慢**，易 **发白**，仅调试用。
 
-参数 **`mmap_gpio_phys_base`**：RK3588 **GPIO3** 控制器一般为 **`0xFEC40000`**（与 `gpiochip3`/fec40000 对应），与 **`gpio_line_offset`**（Pin16=`GPIO3_C1`→ **17**）组合成掩码 `1<<17`。
+参数 **`mmap_gpio_phys_base`**（仅 mmap）：RK3588 **GPIO3** 一般为 **`0xFEC40000`**，与 **`gpio_line_offset`**（Pin16=`GPIO3_C1`→ **17**）组合。
 
 ## 参数与映射
 
-- 默认参数：[`config/status_led_params.yaml`](config/status_led_params.yaml)（**务必**按板上 `gpioinfo` 填写 **`gpiochip`** 与 **`gpio_line_offset`**）。
+- 默认参数：[`config/status_led_params.yaml`](config/status_led_params.yaml）（**spidev**：填写 **`spidev_path`**；**mmap**：按 **`gpioinfo`** 填写 **`gpiochip`** / **`gpio_line_offset`**）。
 - 灯语规则：[`config/status_led_map.yaml`](config/status_led_map.yaml)（状态 → RGB / 低速呼吸）。
 - **`simulate_hardware: true`**：不访问 GPIO（订阅与映射仍运行），用于无硬件桌面调试。
+- **`debug_fixed_color: true`**：忽略灯语映射，全环同一 **`debug_fixed_r/g/b`**（再乘 **`global_brightness`**），便于纯色观察闪烁；量产请 **`false`**。
 
 ## 启动
 
@@ -58,6 +69,17 @@ sudo -E env "PATH=$PATH" bash -lc '
 
 ```bash
 ros2 launch trotbot_status_led status_led.launch.py
+```
+
+仅 **`ros2 run`** 时若**不加参数文件**，只会用节点内置默认值（已与 **`ws2812_backend:=spidev`** 对齐）。要完整使用 **`config/status_led_params.yaml`**（灯语 / `debug_fixed_color` 等），请二选一：
+
+```bash
+ros2 launch trotbot_status_led status_led.launch.py
+```
+
+```bash
+ros2 run trotbot_status_led status_led_node --ros-args \
+  --params-file "$(ros2 pkg prefix trotbot_status_led)/share/trotbot_status_led/config/status_led_params.yaml"
 ```
 
 整机（示例，`trotbot_basic` **默认不启用**，需显式打开）：
@@ -120,3 +142,6 @@ ros2 topic echo /power_sequence/state --once
 | `Device or resource busy` | DTS/其它驱动占用该 GPIO；见野火文档与 `docs/RK3588_GPIO_WS2812_HAL.md` |
 | 灯色错乱 | 微调 `timing_*_ns` / `timing_reset_us`；检查电平与供电共地 |
 | 构建提示 stub | 安装 `libgpiod-dev` 后 **`colcon build` 重编** |
+| **`spidev 打开失败`**（日志 WARN） | 常见为 **`/dev/spidev0.0` 权限不足**（如属 root 且 `600`）。临时：`sudo chmod 666 /dev/spidev0.0`；长期：用户加入 **`dialout`** 组并配置 **udev** 规则，或 **`sudo`** 运行节点。 |
+| **SPI 灯色不对 / 全白乱闪** | 核对 **`spidev_max_speed_hz`**（默认 6.4 MHz）与 **`spidev_bit0_byte` / `spidev_bit1_byte`**；官方 overlay 若固定别的时钟需重算编码，见 **`docs/SPI_WS2812_RK3588.md`**。 |
+| **SPI 首灯偶发闪绿** | WS2812 为 **GRB**，首字节为 G。可试：**`spidev_pre_write_idle_us`**（80～200）、**`spidev_reset_trailer_bytes`**（180～300）、**`spidev_leading_spi_zero_bytes`**（0～32，无效则置 0）、略降 **`refresh_hz`**；硬件：**DIN 串电阻**、电平与共地。 |

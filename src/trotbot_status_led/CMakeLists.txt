@@ -26,6 +26,7 @@ endif()
 add_executable(status_led_node
   src/status_led_node.cpp
   src/ws2812_rockchip_mmap.cpp
+  src/ws2812_spidev.cpp
   ${TSL_WSRC}
 )
 if(NOT GPIOD_FOUND)
