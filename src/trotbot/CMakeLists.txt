@@ -38,6 +38,9 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(PROGRAMS scripts/restart_trotbot_basic.sh
+  DESTINATION share/${PROJECT_NAME}/scripts)
+
 # Install resource marker
 install(FILES
   resource/trotbot

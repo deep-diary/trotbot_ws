@@ -8,19 +8,23 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/u_int8_multi_array.hpp>
 #include <yaml-cpp/yaml.h>
 
 #if defined(TROTBOT_HAS_GPIOD_MUX) && TROTBOT_HAS_GPIOD_MUX
 #include <gpiod.h>
 #endif
 
+#include <cctype>
 #include <cerrno>
 #include <cstring>
 #include <cmath>
 #include <pthread.h>
 #include <sched.h>
 #include <sys/mman.h>
+#include <algorithm>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -37,6 +41,14 @@ enum class GateSpec
   False
 };
 
+/** YAML effect / 扩展：流水灯预留 Chase（当前按同色 solid 渲染）。 */
+enum class MapEffect
+{
+  Solid,
+  Breath,
+  Chase
+};
+
 struct MapRule
 {
   std::string state;
@@ -45,6 +57,7 @@ struct MapRule
   uint8_t g{0};
   uint8_t b{0};
   double breath_period_s{0.0};
+  MapEffect effect{MapEffect::Solid};
 };
 
 struct MapData
@@ -109,6 +122,15 @@ bool LoadMapFile(const std::string & path, MapData * out, std::string * err)
           rule.breath_period_s = 0.0;
         }
       }
+      rule.effect = MapEffect::Solid;
+      if (item["effect"]) {
+        const std::string ef = item["effect"].as<std::string>();
+        if (ef == "breath" || ef == "Breath") {
+          rule.effect = MapEffect::Breath;
+        } else if (ef == "chase" || ef == "Chase") {
+          rule.effect = MapEffect::Chase;
+        }
+      }
       out->rules.push_back(rule);
     }
     return true;
@@ -134,6 +156,47 @@ bool MatchRule(const MapRule & rule, const std::string & st, bool gate_open)
   return false;
 }
 
+bool FindMatchingRule(const MapData & map, const std::string & st, bool gate_open, MapRule * out)
+{
+  for (const auto & rule : map.rules) {
+    if (!MatchRule(rule, st, gate_open)) {
+      continue;
+    }
+    *out = rule;
+    return true;
+  }
+  return false;
+}
+
+bool RuleNeedsBreathAnimation(const MapRule & rule)
+{
+  if (rule.effect == MapEffect::Breath) {
+    return true;
+  }
+  if (rule.breath_period_s > 1e-6) {
+    return true;
+  }
+  return false;
+}
+
+void LookupRgbFromRule(const MapRule & rule, double time_s, uint8_t * r, uint8_t * g, uint8_t * b)
+{
+  double scale = 1.0;
+  const bool breath_like =
+    (rule.effect == MapEffect::Breath || rule.breath_period_s > 1e-6) &&
+    rule.effect != MapEffect::Chase;
+  if (breath_like) {
+    const double period = rule.breath_period_s > 1e-6 ? rule.breath_period_s : 1.2;
+    const double ang =
+      6.283185307179586476925286766559 * (time_s / period);
+    scale = 0.35 + 0.65 * (std::sin(ang) * 0.5 + 0.5);
+  }
+  // Chase：预留，当前与同色 solid 一致（逐灯偏移后续实现）
+  *r = static_cast<uint8_t>(std::min(255.0, std::floor(static_cast<double>(rule.r) * scale + 0.5)));
+  *g = static_cast<uint8_t>(std::min(255.0, std::floor(static_cast<double>(rule.g) * scale + 0.5)));
+  *b = static_cast<uint8_t>(std::min(255.0, std::floor(static_cast<double>(rule.b) * scale + 0.5)));
+}
+
 void LookupRgb(
   const MapData & map,
   const std::string & st,
@@ -143,24 +206,22 @@ void LookupRgb(
   uint8_t * g,
   uint8_t * b)
 {
-  for (const auto & rule : map.rules) {
-    if (!MatchRule(rule, st, gate_open)) {
-      continue;
-    }
-    double scale = 1.0;
-    if (rule.breath_period_s > 1e-6) {
-      const double ang =
-        6.283185307179586476925286766559 * (time_s / rule.breath_period_s);
-      scale = 0.35 + 0.65 * (std::sin(ang) * 0.5 + 0.5);
-    }
-    *r = static_cast<uint8_t>(std::min(255.0, std::floor(static_cast<double>(rule.r) * scale + 0.5)));
-    *g = static_cast<uint8_t>(std::min(255.0, std::floor(static_cast<double>(rule.g) * scale + 0.5)));
-    *b = static_cast<uint8_t>(std::min(255.0, std::floor(static_cast<double>(rule.b) * scale + 0.5)));
+  MapRule rule;
+  if (FindMatchingRule(map, st, gate_open, &rule)) {
+    LookupRgbFromRule(rule, time_s, r, g, b);
     return;
   }
   *r = map.def_r;
   *g = map.def_g;
   *b = map.def_b;
+}
+
+std::string TrimWs(std::string s)
+{
+  const auto not_space = [](unsigned char c) { return !std::isspace(c); };
+  s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_space));
+  s.erase(std::find_if(s.rbegin(), s.rend(), not_space).base(), s.end());
+  return s;
 }
 
 std::string ResolveMapPath(const std::string & param_path)
@@ -185,12 +246,20 @@ public:
   {
     gpiochip_ = this->declare_parameter<std::string>("gpiochip", "gpiochip0");
     gpio_line_offset_ = this->declare_parameter<int>("gpio_line_offset", 0);
-    led_count_ = this->declare_parameter<int>("led_count", 16);
+    led_count_ = this->declare_parameter<int>("led_count", 8);
     global_brightness_ = this->declare_parameter<double>("global_brightness", 0.35);
     state_map_file_ = this->declare_parameter<std::string>("state_map_file", "config/status_led_map.yaml");
     state_topic_ = this->declare_parameter<std::string>("state_topic", "/power_sequence/state");
     gate_topic_ = this->declare_parameter<std::string>("gate_topic", "/power_sequence/gate_open");
     refresh_hz_ = this->declare_parameter<double>("refresh_hz", 50.0);
+    refresh_on_change_only_ = this->declare_parameter<bool>("refresh_on_change_only", true);
+    change_repeat_count_ = this->declare_parameter<int>("change_repeat_count", 2);
+    change_repeat_interval_ms_ = this->declare_parameter<int>("change_repeat_interval_ms", 5);
+    animation_refresh_hz_ = this->declare_parameter<double>("animation_refresh_hz", 40.0);
+    initial_push_delay_ms_ = this->declare_parameter<int>("initial_push_delay_ms", 50);
+    publish_debug_rgb_ = this->declare_parameter<bool>("publish_debug_rgb", false);
+    debug_rgb_topic_ = this->declare_parameter<std::string>("debug_rgb_topic", "/status_led/debug_rgb");
+    debug_meta_topic_ = this->declare_parameter<std::string>("debug_meta_topic", "/status_led/debug_meta");
     simulate_hardware_ = this->declare_parameter<bool>("simulate_hardware", false);
     mlock_all_ = this->declare_parameter<bool>("mlock_all", false);
     realtime_sched_priority_ = this->declare_parameter<int>("realtime_sched_priority", -1);
@@ -411,41 +480,120 @@ public:
 
     rclcpp::QoS gate_qos(rclcpp::KeepLast(10));
     gate_qos.transient_local().reliable();
+    rclcpp::QoS state_qos(rclcpp::KeepLast(1));
+    state_qos.transient_local().reliable();
     state_sub_ = this->create_subscription<std_msgs::msg::String>(
-      state_topic_, rclcpp::QoS(10),
+      state_topic_, state_qos,
       std::bind(&StatusLedNode::OnState, this, std::placeholders::_1));
     gate_sub_ = this->create_subscription<std_msgs::msg::Bool>(
       gate_topic_, gate_qos,
       std::bind(&StatusLedNode::OnGate, this, std::placeholders::_1));
 
-    const double hz = refresh_hz_ > 0.1 ? refresh_hz_ : 50.0;
-    const auto period = std::chrono::duration<double>(1.0 / hz);
-    timer_ = this->create_wall_timer(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(period),
-      std::bind(&StatusLedNode::OnTimer, this));
+    if (publish_debug_rgb_) {
+      debug_rgb_pub_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>(debug_rgb_topic_, 10);
+      debug_meta_pub_ = this->create_publisher<std_msgs::msg::String>(debug_meta_topic_, 10);
+      RCLCPP_INFO(
+        this->get_logger(), "调试话题：'publish_debug_rgb'=true → '%s'（RGB）'%s'（state/gate/匹配）",
+        debug_rgb_topic_.c_str(), debug_meta_topic_.c_str());
+    }
 
     phase_time_s_ = 0.0;
+
+    if (debug_fixed_color_) {
+      const double hz = refresh_hz_ > 0.1 ? refresh_hz_ : 50.0;
+      const auto period = std::chrono::duration<double>(1.0 / hz);
+      legacy_timer_ = this->create_wall_timer(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(period),
+        std::bind(&StatusLedNode::OnDebugFixedTimer, this));
+    } else if (!refresh_on_change_only_) {
+      const double hz = refresh_hz_ > 0.1 ? refresh_hz_ : 50.0;
+      const auto period = std::chrono::duration<double>(1.0 / hz);
+      legacy_timer_ = this->create_wall_timer(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(period),
+        std::bind(&StatusLedNode::OnLegacyPeriodicTimer, this));
+      RCLCPP_INFO(
+        this->get_logger(), "WS2812 周期刷新 refresh_hz=%.2f（refresh_on_change_only:=false）", hz);
+    } else {
+      RCLCPP_INFO(
+        this->get_logger(),
+        "WS2812 按变化刷新：repeat=%d interval_ms=%d animation_hz=%.2f",
+        change_repeat_count_, change_repeat_interval_ms_, animation_refresh_hz_);
+      const int delay_ms = std::max(0, initial_push_delay_ms_);
+      startup_push_timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(delay_ms > 0 ? delay_ms : 1),
+        [this]() {
+          if (startup_push_timer_) {
+            startup_push_timer_->cancel();
+            startup_push_timer_.reset();
+          }
+          RefreshOutputs();
+        });
+    }
   }
 
   ~StatusLedNode() override
   {
+    CancelRepeatTimer();
+    CancelAnimationTimer();
+    if (startup_push_timer_) {
+      startup_push_timer_->cancel();
+    }
+    if (legacy_timer_) {
+      legacy_timer_->cancel();
+    }
     mmap_.Shutdown();
     gpiod_.Shutdown();
     spidev_.Shutdown();
   }
 
 private:
-  void OnState(const std_msgs::msg::String::SharedPtr msg) { last_state_ = msg->data; }
+  void CancelRepeatTimer()
+  {
+    if (repeat_timer_) {
+      repeat_timer_->cancel();
+      repeat_timer_.reset();
+    }
+    repeat_remaining_ = 0;
+  }
 
-  void OnGate(const std_msgs::msg::Bool::SharedPtr msg) { last_gate_ = msg->data; }
+  void CancelAnimationTimer()
+  {
+    if (animation_timer_) {
+      animation_timer_->cancel();
+      animation_timer_.reset();
+    }
+  }
 
-  void OnTimer()
+  void PublishDebugRgb(uint8_t r, uint8_t g, uint8_t b, bool map_matched)
+  {
+    if (!publish_debug_rgb_) {
+      return;
+    }
+    if (!debug_rgb_pub_ || !debug_meta_pub_) {
+      return;
+    }
+    std_msgs::msg::UInt8MultiArray rgb_msg;
+    rgb_msg.data.resize(3);
+    rgb_msg.data[0] = r;
+    rgb_msg.data[1] = g;
+    rgb_msg.data[2] = b;
+    debug_rgb_pub_->publish(rgb_msg);
+
+    std_msgs::msg::String meta;
+    std::ostringstream oss;
+    oss << "state=\"" << last_state_ << "\" gate_open=" << (last_gate_ ? 1 : 0)
+        << " rgb_u8=" << static_cast<int>(r) << "," << static_cast<int>(g) << "," << static_cast<int>(b)
+        << " global_brightness=" << global_brightness_ << " map_match=" << (map_matched ? 1 : 0)
+        << " map_loaded=" << (map_loaded_ ? 1 : 0);
+    meta.data = oss.str();
+    debug_meta_pub_->publish(meta);
+  }
+
+  void DoRenderPushToHardware()
   {
     if (!debug_fixed_color_ && !map_loaded_) {
       return;
     }
-    const double dt = 1.0 / refresh_hz_;
-    phase_time_s_ += dt;
 
     uint8_t r = 0;
     uint8_t g = 0;
@@ -461,6 +609,13 @@ private:
     r = static_cast<uint8_t>(std::min(255.0, std::floor(static_cast<double>(r) * global_brightness_ + 0.5)));
     g = static_cast<uint8_t>(std::min(255.0, std::floor(static_cast<double>(g) * global_brightness_ + 0.5)));
     b = static_cast<uint8_t>(std::min(255.0, std::floor(static_cast<double>(b) * global_brightness_ + 0.5)));
+
+    bool map_matched = false;
+    if (map_loaded_ && !debug_fixed_color_) {
+      MapRule dbg_rule{};
+      map_matched = FindMatchingRule(map_, last_state_, last_gate_, &dbg_rule);
+    }
+    PublishDebugRgb(r, g, b, map_matched);
 
     std::vector<uint8_t> buf(static_cast<size_t>(led_count_) * 3U, 0);
     for (int i = 0; i < led_count_; ++i) {
@@ -480,6 +635,99 @@ private:
     }
   }
 
+  void PushSolidBurst()
+  {
+    DoRenderPushToHardware();
+    const int extra = change_repeat_count_ - 1;
+    if (extra <= 0) {
+      return;
+    }
+    repeat_remaining_ = extra;
+    const int ms = std::max(1, change_repeat_interval_ms_);
+    repeat_timer_ = this->create_wall_timer(
+      std::chrono::milliseconds(ms),
+      [this]() {
+        DoRenderPushToHardware();
+        repeat_remaining_--;
+        if (repeat_remaining_ <= 0) {
+          CancelRepeatTimer();
+        }
+      });
+  }
+
+  void StartAnimationTimer()
+  {
+    CancelAnimationTimer();
+    const double hz = animation_refresh_hz_ > 0.1 ? animation_refresh_hz_ : 40.0;
+    const auto period = std::chrono::duration<double>(1.0 / hz);
+    animation_timer_ = this->create_wall_timer(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(period),
+      std::bind(&StatusLedNode::OnAnimationTick, this));
+  }
+
+  void OnAnimationTick()
+  {
+    const double hz = animation_refresh_hz_ > 0.1 ? animation_refresh_hz_ : 40.0;
+    phase_time_s_ += 1.0 / hz;
+    DoRenderPushToHardware();
+  }
+
+  void RefreshOutputs()
+  {
+    if (debug_fixed_color_) {
+      return;
+    }
+    if (!map_loaded_) {
+      return;
+    }
+
+    CancelRepeatTimer();
+    CancelAnimationTimer();
+
+    MapRule rule{};
+    if (!FindMatchingRule(map_, last_state_, last_gate_, &rule)) {
+      PushSolidBurst();
+      return;
+    }
+
+    if (RuleNeedsBreathAnimation(rule)) {
+      phase_time_s_ = 0.0;
+      StartAnimationTimer();
+      OnAnimationTick();
+      return;
+    }
+
+    PushSolidBurst();
+  }
+
+  void OnLegacyPeriodicTimer()
+  {
+    if (!map_loaded_) {
+      return;
+    }
+    const double hz = refresh_hz_ > 0.1 ? refresh_hz_ : 50.0;
+    phase_time_s_ += 1.0 / hz;
+    DoRenderPushToHardware();
+  }
+
+  void OnDebugFixedTimer() { DoRenderPushToHardware(); }
+
+  void OnState(const std_msgs::msg::String::SharedPtr msg)
+  {
+    last_state_ = TrimWs(msg->data);
+    if (!debug_fixed_color_ && refresh_on_change_only_) {
+      RefreshOutputs();
+    }
+  }
+
+  void OnGate(const std_msgs::msg::Bool::SharedPtr msg)
+  {
+    last_gate_ = msg->data;
+    if (!debug_fixed_color_ && refresh_on_change_only_) {
+      RefreshOutputs();
+    }
+  }
+
   Ws2812RockchipMmap mmap_;
   Ws2812Gpiod gpiod_;
   Ws2812Spidev spidev_;
@@ -490,12 +738,22 @@ private:
 
   std::string gpiochip_;
   int gpio_line_offset_{0};
-  int led_count_{16};
+  int led_count_{8};
   double global_brightness_{0.35};
   std::string state_map_file_;
   std::string state_topic_;
   std::string gate_topic_;
   double refresh_hz_{50.0};
+  bool refresh_on_change_only_{true};
+  int change_repeat_count_{2};
+  int change_repeat_interval_ms_{5};
+  double animation_refresh_hz_{40.0};
+  int initial_push_delay_ms_{50};
+  bool publish_debug_rgb_{false};
+  std::string debug_rgb_topic_{"/status_led/debug_rgb"};
+  std::string debug_meta_topic_{"/status_led/debug_meta"};
+  rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr debug_rgb_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr debug_meta_pub_;
   bool simulate_hardware_{false};
   bool debug_fixed_color_{false};
   uint8_t debug_fixed_r_{0};
@@ -516,7 +774,11 @@ private:
 
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr state_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr gate_sub_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::TimerBase::SharedPtr legacy_timer_;
+  rclcpp::TimerBase::SharedPtr repeat_timer_;
+  rclcpp::TimerBase::SharedPtr animation_timer_;
+  rclcpp::TimerBase::SharedPtr startup_push_timer_;
+  int repeat_remaining_{0};
 
   double phase_time_s_{0.0};
 };

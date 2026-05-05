@@ -26,7 +26,7 @@ status_led_node:
     gpiochip: "gpiochip3"
     gpio_line_offset: 17
 
-    led_count: 16
+    led_count: 8
     # 固定纯色调试：true 时忽略灯语 YAML，全环同一颜色（便于观察闪烁）。量产请改回 false。
     debug_fixed_color: false
     debug_fixed_r: 10
@@ -42,6 +42,21 @@ status_led_node:
 
     # 固定纯色时可略降（如 20～30）减轻刷新频率，便于判断是否帧抖
     refresh_hz: 25.0
+
+    # true（默认）：状态/gate 变化时再写 WS2812；固态规则不周期狂刷。false：保持旧行为连续 refresh_hz 刷新。
+    refresh_on_change_only: true
+    # 变化后同一帧重复写次数（抗偶发丢帧）；总次数 = change_repeat_count
+    change_repeat_count: 2
+    change_repeat_interval_ms: 5
+    # 呼吸等动画独立定时器频率（与 refresh_hz 无关）
+    animation_refresh_hz: 40.0
+    # 节点启动后延迟首帧推送（ms），等 transient_local 状态到位
+    initial_push_delay_ms: 50
+
+    # 联调：发布 /status_led/debug_rgb（UInt8[3]）与 /status_led/debug_meta（String，含 state/gate/rgb/是否匹配规则）
+    publish_debug_rgb: false
+    # debug_rgb_topic: "/status_led/debug_rgb"
+    # debug_meta_topic: "/status_led/debug_meta"
 
     # 桌面 / CI 无 GPIO：true 时不访问硬件（仍为 degradation 语义的一种）
     simulate_hardware: false

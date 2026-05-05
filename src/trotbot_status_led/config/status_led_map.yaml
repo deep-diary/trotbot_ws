@@ -1,11 +1,14 @@
-# Pin16 (LubanCat-4-V1) ↔ SoC GPIO3_C1，WS2812 DIN，默认 16 灯。
-# gpiochip + line offset 随镜像/DTS 变化，请在目标板执行 `gpioinfo <chip>` 实测后写入
-# config/status_led_params.yaml（勿依赖 sysfs 全局编号）。
+# 直线灯带 8 灯（led_count 见 status_led_params.yaml）。SPI/MOSI 或 GPIO DIN 由后端决定。
+# gpiochip + line offset 随镜像/DTS 变化，请在目标板执行 `gpioinfo <chip>` 实测后写入参数 YAML。
 #
 # gate: 与 /power_sequence/gate_open 组合；省略或 null 表示不区分 gate。
-# breath_period_s: >0 时对该规则做低速亮度呼吸（秒/周期）。
+#
+# 扩展（后续）：effect — solid（默认）| breath | chase
+#   breath：需 breath_period_s（秒/周期）；节点用 animation_refresh_hz 定时刷新。
+#   chase：预留流水；当前按 solid 渲染同一 RGB。
+# 默认全部为静态亮度；refresh_on_change_only=true 时仅在状态/gate 变化时写硬件（呼吸规则仍会起动画定时器）。
 
-version: 1
+version: 2
 
 # 无匹配规则时的默认 RGB
 default_rgb: [40, 40, 40]
@@ -15,6 +18,10 @@ rules:
   - state: Fault
     rgb: [255, 0, 0]
 
+  # power_sequence 未覆盖状态机值时 String 为 \"Unknown\"，便于与灯语表未命中区分
+  - state: Unknown
+    rgb: [255, 0, 255]
+
   - state: Idle
     rgb: [0, 0, 128]
 
@@ -23,15 +30,12 @@ rules:
 
   - state: Precheck
     rgb: [255, 140, 0]
-    breath_period_s: 1.2
 
   - state: EnableInit
     rgb: [255, 200, 0]
-    breath_period_s: 1.5
 
   - state: SoftStand
     rgb: [255, 220, 0]
-    breath_period_s: 2.0
 
   - state: Running
     gate: true
@@ -43,7 +47,6 @@ rules:
 
   - state: SoftProne
     rgb: [255, 80, 0]
-    breath_period_s: 2.0
 
   - state: ProneHold
     rgb: [0, 128, 255]

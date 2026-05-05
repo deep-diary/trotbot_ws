@@ -122,7 +122,8 @@ public:
     pose_pub_ = this->create_publisher<Pose>(body_pose_topic_, 10);
     cmd_vel_pub_ = this->create_publisher<Twist>(cmd_vel_topic_, 10);
     gate_pub_ = this->create_publisher<Bool>(gate_topic_, rclcpp::QoS(1).reliable().transient_local());
-    state_pub_ = this->create_publisher<String>(state_topic_, 10);
+    // 与 status_led 等 transient_local 订阅对齐：晚启动节点仍可收到最后一帧状态（否则易卡在 Idle 灯语）。
+    state_pub_ = this->create_publisher<String>(state_topic_, rclcpp::QoS(1).reliable().transient_local());
     if (!set_zero_event_topic_.empty()) {
       event_pub_ = this->create_publisher<String>(set_zero_event_topic_, 10);
     }
@@ -146,7 +147,6 @@ public:
         std::bind(&PowerSequenceNode::OnBootActiveReportOnce, this));
     }
 
-    gate_open_ = false;
     PublishGate();
     PublishState();
     RCLCPP_INFO(this->get_logger(), "Power sequence node started: state=Idle gate=closed");
@@ -376,8 +376,7 @@ private:
         }
         break;
       case SequenceState::SoftStand: {
-          gate_open_ = true;
-          PublishGate();
+          SetGateOpen(true);
           const double alpha = stand_duration_s_ > 1e-6 ? std::min(1.0, elapsed_in_state_s_ / stand_duration_s_) : 1.0;
           const double z_end = use_stand_resume_for_softstand_ ? stand_resume_z_ : stand_z_;
           const double z = prone_z_ + alpha * (z_end - prone_z_);
@@ -388,8 +387,7 @@ private:
         }
         break;
       case SequenceState::SoftProne: {
-          gate_open_ = true;
-          PublishGate();
+          SetGateOpen(true);
           const double alpha = prone_duration_s_ > 1e-6 ? std::min(1.0, elapsed_in_state_s_ / prone_duration_s_) : 1.0;
           const double z = soft_prone_z0_ + alpha * (prone_z_ - soft_prone_z0_);
           PublishHoldPose(z);
@@ -406,8 +404,7 @@ private:
         }
         break;
       case SequenceState::ProneHold:
-        gate_open_ = true;
-        PublishGate();
+        SetGateOpen(true);
         PublishHoldPose(prone_z_);
         break;
       case SequenceState::Disable:
@@ -416,8 +413,7 @@ private:
           SendCmdAll(kCmdReset);
           disable_sent_ = true;
         }
-        gate_open_ = false;
-        PublishGate();
+        SetGateOpen(false);
         PublishHoldPose(prone_z_);
         if (elapsed_in_state_s_ >= 0.25) {
           EnterState(SequenceState::Idle);
@@ -519,6 +515,16 @@ private:
     Bool msg;
     msg.data = gate_open_;
     gate_pub_->publish(msg);
+  }
+
+  /** 仅在实际跳变时发布，避免 TickState 每周期 PublishGate 触发下游（如 status_led）狂刷 WS2812。 */
+  void SetGateOpen(bool open)
+  {
+    if (gate_open_ == open) {
+      return;
+    }
+    gate_open_ = open;
+    PublishGate();
   }
 
   void PublishHoldPose(double z)

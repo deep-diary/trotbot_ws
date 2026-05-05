@@ -289,6 +289,31 @@ ros2 launch trotbot trotbot_basic.launch.py \
   use_status_led:=true
 ```
 
+**整机重启（同一参数）**：另开终端或结束当前 launch 后执行脚本——会先向运行中的 `ros2 launch trotbot trotbot_basic.launch.py` 发送 **SIGINT** 优雅退出，再以前台重新拉起（与工作空间路径、`TROTBOT_WS` 规则见脚本注释）。安装包后：
+
+```bash
+source ~/trotbot_ws/install/setup.bash   # 按实际路径
+bash "$(ros2 pkg prefix trotbot)/share/trotbot/scripts/restart_trotbot_basic.sh"
+```
+
+源码树内可直接：`bash src/trotbot/scripts/restart_trotbot_basic.sh`。若由 **systemd** 管理整机启动，请优先用下面「**改代码后：编译 + systemd 重启**」，不要在机器上双起第二套 launch。
+
+**改代码后：编译 + systemd 重启（板端 / 与 systemd 联调时推荐）**  
+`systemctl restart` 会按单元里的 `ExecStart` 重新跑一遍 `source install/setup.bash` 和 `ros2 launch …`，**前提是已把新代码编进 `install/`**。主栈包可只编到 `trotbot` 相关，避免工作区里 **minidog**（需 catkin）、**champ_gazebo**（需 Gazebo 依赖）等包导致全量 `colcon build` 失败：
+
+```bash
+cd ~/trotbot_ws
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install --allow-overriding champ champ_msgs --packages-up-to trotbot trotbot_status_led trotbot_can_bridge
+sudo systemctl restart trotbot-basic
+sudo systemctl status trotbot-basic --no-pager
+# 可选：看启动日志
+# journalctl -u trotbot-basic -b -e --no-pager
+```
+
+- 服务名以 `/etc/systemd/system/` 下实际 **`.service` 文件名** 为准（示例为 **`trotbot-basic`**）。若曾修改过 unit 文件，需先 **`sudo systemctl daemon-reload`** 再 **`restart`**。  
+- 仅手跑 launch、**未**用 systemd 时，没有可 `restart` 的 unit，请用上一段 **restart 脚本** 或自行 `ros2 launch`。
+
 #### 开机自启（systemd）
 
 将示例单元复制为系统服务并修改 **`User`**、**`/home/bot/trotbot_ws`** 为你的账户与工作空间路径：

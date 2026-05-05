@@ -1,6 +1,6 @@
 # trotbot_status_led（RQ-023）
 
-鲁班猫 RK3588 上驱动 **WS2812** 圆环（默认 **16** 灯）：优先 **`spidev`（SPI MOSI）** 或 **`rockchip_mmap`（GPIO 寄存器）** / **`gpiod`**；订阅 `power_sequence_node` 的 **`/power_sequence/state`**、**`/power_sequence/gate_open`**，按 YAML 显示灯语。
+鲁班猫 RK3588 上驱动 **WS2812** 直线灯带（默认 **8** 灯）：优先 **`spidev`（SPI MOSI）** 或 **`rockchip_mmap`（GPIO 寄存器）** / **`gpiod`**；订阅 `power_sequence_node` 的 **`/power_sequence/state`**、**`/power_sequence/gate_open`**，按 YAML 显示灯语。
 
 ## 依赖
 
@@ -59,9 +59,12 @@ sudo -E env "PATH=$PATH" bash -lc '
 ## 参数与映射
 
 - 默认参数：[`config/status_led_params.yaml`](config/status_led_params.yaml）（**spidev**：填写 **`spidev_path`**；**mmap**：按 **`gpioinfo`** 填写 **`gpiochip`** / **`gpio_line_offset`**）。
-- 灯语规则：[`config/status_led_map.yaml`](config/status_led_map.yaml)（状态 → RGB / 低速呼吸）。
+- 灯语规则：[`config/status_led_map.yaml`](config/status_led_map.yaml)（状态 → RGB；YAML 字段 **`effect`**：`solid` / `breath` / `chase`（流水预留）；**`breath_period_s`** 用于呼吸周期）。
+- **`led_count`**：灯珠数量，默认 **8**。
+- **刷新策略**：**`refresh_on_change_only`**（默认 **true**）— 仅在 **`/power_sequence/state`** 或 **`gate_open`** 变化（及启动延迟首帧）时写 WS2812；固态规则不按固定 **`refresh_hz`** 连续刷。**`change_repeat_count`** / **`change_repeat_interval_ms`**：同一变化下重复写次数与间隔（抗偶发丢帧）。**`animation_refresh_hz`**：呼吸等动画的独立刷新频率。**`initial_push_delay_ms`**：启动后延迟首帧，便于 **`transient_local`** 状态先到。**`refresh_on_change_only:=false`** 时恢复旧行为：按 **`refresh_hz`** 周期刷新（仍可用于排查闪烁）。
 - **`simulate_hardware: true`**：不访问 GPIO（订阅与映射仍运行），用于无硬件桌面调试。
-- **`debug_fixed_color: true`**：忽略灯语映射，全环同一 **`debug_fixed_r/g/b`**（再乘 **`global_brightness`**），便于纯色观察闪烁；量产请 **`false`**。
+- **`debug_fixed_color: true`**：忽略灯语映射，全条同一 **`debug_fixed_r/g/b`**（再乘 **`global_brightness`**），由 **`refresh_hz`** 周期刷新；量产请 **`false`**。
+- **联调话题（无需另写节点）**：**`publish_debug_rgb: true`** 时发布 **`debug_rgb_topic`**（默认 **`/status_led/debug_rgb`**，`std_msgs/UInt8MultiArray` 3 字节 R、G、B，已乘 **`global_brightness`**）与 **`debug_meta_topic`**（默认 **`/status_led/debug_meta`**，`std_msgs/String`，含 `state`、`gate_open`、**`map_match`** 等）。`map_match=0` 且灯色与预期不符时，多为状态字符串与 YAML 不一致。联调可并行：`ros2 topic echo /power_sequence/state` 与 `ros2 topic echo /status_led/debug_meta`。
 
 ## 启动
 
@@ -130,7 +133,7 @@ WantedBy=multi-user.target
 ```bash
 ros2 node list | grep status_led
 ros2 topic echo /power_sequence/state --once
-# 预期 Running + gate_open 时呈绿色全环（见 status_led_map.yaml）
+# 预期 Running + gate_open 时呈绿色整条（见 status_led_map.yaml）
 ```
 
 ## 常见故障
