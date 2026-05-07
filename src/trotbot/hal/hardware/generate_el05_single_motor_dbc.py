@@ -9,7 +9,8 @@ Default use case:
 This script updates:
 1) BO_ message IDs (extended ID encoded as DBC ID with bit31 set)
 2) Motor node names like Motor01 -> Motor02
-3) Message names like _M01 -> _M02
+3) Message names like M01_T2_Rsp_Mode2 -> M02_T2_Rsp_Mode2
+4) Unique signal prefixes like M01_Angle_rad -> M02_Angle_rad
 
 Examples:
 1) Generate id=02 from default source id=01:
@@ -36,9 +37,11 @@ from pathlib import Path
 
 
 BO_RE = re.compile(r"^(BO_\s+)(\d+)(\s+\S+:\s+\d+\s+\S+\s*)$")
+BO_NAME_PREFIX_RE = re.compile(r"^(BO_\s+\d+\s+)M(\d{2})_(\S+)(:\s+\d+\s+\S+\s*)$")
 VAL_RE = re.compile(r"^(VAL_\s+)(\d+)(\s+.+)$")
 CM_BO_RE = re.compile(r"^(CM_\s+BO_\s+)(\d+)(\s+.+)$")
 BA_BO_RE = re.compile(r'^(BA_\s+".*?"\s+BO_\s+)(\d+)(\s+.+)$')
+SG_PREFIX_RE = re.compile(r'^(\s*SG_\s+)M\d{2}_(\w+)(\s*:.*)$')
 
 
 def to_dbc_ext_id(raw_29bit_id: int) -> int:
@@ -107,10 +110,25 @@ def transform_text(text: str, source_id: int, target_id: int) -> str:
                         new_id = remap_bo_id(old_id, source_id, target_id)
                         line = f"{prefix}{new_id}{suffix}"
 
-        # Update node/message tokens for single-motor naming convention.
-        # Keep this conservative to avoid touching unrelated numbers.
+        # Update node tokens for single-motor naming convention.
         line = line.replace(f"Motor{src}", f"Motor{dst}")
+
+        # Backward compatibility for old naming style: EL05_*_M01 -> *_M02
         line = line.replace(f"_M{src}", f"_M{dst}")
+
+        # Rewrite unique signal prefix by pattern, not only exact source token.
+        # Example: "SG_ M01_Angle_rad" -> "SG_ M02_Angle_rad".
+        m_sg = SG_PREFIX_RE.match(line)
+        if m_sg:
+            pre, base, suf = m_sg.groups()
+            line = f"{pre}M{dst}_{base}{suf}"
+
+        # Rewrite new message naming convention:
+        # "BO_ ... M01_T2_Rsp_Mode2: ..." -> "... M02_T2_Rsp_Mode2: ..."
+        m_bo_name = BO_NAME_PREFIX_RE.match(line)
+        if m_bo_name and m_bo_name.group(2) == src:
+            pre, _mid, tail, suf = m_bo_name.groups()
+            line = f"{pre}M{dst}_{tail}{suf}"
 
         out_lines.append(line)
 
