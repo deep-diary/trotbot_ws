@@ -98,6 +98,20 @@ def generate_launch_description():
         description="use_teleop=true 时，是否用 xterm 启动键盘遥控（桌面可设 true）",
     )
 
+    use_ps4_feedback = LaunchConfiguration("use_ps4_feedback")
+    use_ps4_feedback_launch_arg = DeclareLaunchArgument(
+        name="use_ps4_feedback",
+        default_value="true",
+        description="use_teleop=true 时，是否启动 PS4 手柄灯条/振动反馈",
+    )
+
+    block_body_pose_until_running = LaunchConfiguration("block_body_pose_until_running")
+    block_body_pose_until_running_launch_arg = DeclareLaunchArgument(
+        name="block_body_pose_until_running",
+        default_value="true",
+        description="真机默认 true；仿真/台架无电源序列时设 false，允许手柄直接调 body_pose",
+    )
+
     rviz = LaunchConfiguration("rviz")
     rviz_launch_arg = DeclareLaunchArgument(
         name="rviz",
@@ -239,6 +253,8 @@ def generate_launch_description():
             "use_joystick": use_joystick,
             "joystick_dev": joystick_dev,
             "use_xterm": use_xterm,
+            "use_ps4_feedback": use_ps4_feedback,
+            "block_body_pose_until_running": block_body_pose_until_running,
         }.items(),
         condition=IfCondition(use_teleop),
     )
@@ -253,6 +269,8 @@ def generate_launch_description():
         use_joystick_launch_arg,
         joystick_dev_launch_arg,
         use_xterm_launch_arg,
+        use_ps4_feedback_launch_arg,
+        block_body_pose_until_running_launch_arg,
         rviz_launch_arg,
         rviz_config_launch_arg,
         description_file_launch_arg,

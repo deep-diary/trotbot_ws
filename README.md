@@ -172,6 +172,9 @@ ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'shutd
 
 # 十二电机机械零位（仅 Idle + gate 关闭时生效；无手柄调试用）
 ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'set_zero'}"
+
+# 一次性电机初始化：写 zero_sta(0x7029)=1 并保存到电机 flash（仅 Idle + gate 关闭；写后需断电重启生效）
+ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'motor_init'}"
 ```
 
 执行前请 **`source install/setup.bash`**，且 **`power_sequence_node` 已在运行**。观察状态可配合：
@@ -181,7 +184,7 @@ ros2 topic echo /power_sequence/state --once
 ros2 topic echo /power_sequence/gate_open --once
 ```
 
-说明：若当前状态机不允许该指令，节点会忽略并输出 `ignore command=...`；未知字符串会提示 `supported: start/prone/shutdown/set_zero`。
+说明：若当前状态机不允许该指令，节点会忽略并输出 `ignore command=...`；未知字符串会提示 `supported: start/prone/shutdown/set_zero/motor_init`。
 
 **指令语义（与 `power_sequence_node` 一致）**
 
@@ -191,16 +194,17 @@ ros2 topic echo /power_sequence/gate_open --once
 | `prone` | 仅在 **`Running`**：`SoftProne` 过渡到趴姿目标后进入 **`ProneHold`**，**不发 Reset、保持使能与 gate** |
 | `shutdown` | **`ProneHold`**：直接进入 **`Disable`**（全机 `Reset` 后回 `Idle`）；其余 **`Idle` / `Precheck` / `EnableInit` / `SoftStand` / `Running` / `SoftProne`**：先 **`SoftProne`**，再 **`Disable`** |
 | `set_zero` | **维修后机械零位**：仅 **`Idle`** 且 **`gate_open=false`** 时对 12 电机发 EL05 **`set_zero`**（CMD 0x06）；非 Idle 拒绝（日志 WARN）。与 URDF `joint_offsets` 标定不同层 |
+| `motor_init` | **一次性电机初始化**：仅 **`Idle`** 且 **`gate_open=false`** 时写 `zero_sta(0x7029)=1` → CMD 0x16 保存 flash → CMD 0x11 回读校验（要求 12/12）。不改机械零位；**写后需断电重启生效** |
 
-手柄等效：`L1+R1`（且**未**按 Share）或 **`□`（Square）** 长按 → 与 **`start`** 相同计时（`start_longpress_s`）；**`○`（Circle）** 长按 → 与 **`prone`** 相同计时（`prone_longpress_s`）。PS4 类布局下 `□` 默认 `button_square:=3`，若与你的 `sensor_msgs/Joy` 不符请改 `power_sequence.yaml`。
+手柄等效：`L1+R1`（且**未**按 Share）或 **`□`（Square）** 长按 → 与 **`start`** 相同计时（`start_longpress_s`）；**`○`（Circle）** 长按 → 与 **`prone`** 相同计时（`prone_longpress_s`）；**`Share+Options`** 长按 **`motor_init_longpress_s`**（默认 3 s）→ 与 **`motor_init`** 相同。PS4 类布局下 `□` 默认 `button_square:=3`，若与你的 `sensor_msgs/Joy` 不符请改 `power_sequence.yaml`。
 
-**机械零位（RQ-024）**：仅在 **`Idle`、尚未 `start`** 时使用——PS4 **Options** 长按 **`set_zero_longpress_s`**（默认约 2 s，防误触），或上述话题 **`set_zero`**。按钮索引 **`button_option`**（默认 9）务必用 **`ros2 topic echo /joy`** 对照 Options 实测；设 **`button_option: -1`** 可关闭手柄、仅保留话题。勿与 **`el05_motor_explicit_cmds_12_direct.sh`** 等 **cansend** 脚本并发抢总线。
+**机械零位（RQ-024）**：仅在 **`Idle`、尚未 `start`** 时使用——PS4 **Options 单独**长按 **`set_zero_longpress_s`**（默认约 2 s，防误触；同时按住 Share 时走电机初始化，不会 set_zero），或上述话题 **`set_zero`**。按钮索引 **`button_option`**（默认 9）务必用 **`ros2 topic echo /joy`** 对照 Options 实测；设 **`button_option: -1`** 可关闭手柄、仅保留话题。勿与 **`el05_motor_explicit_cmds_12_direct.sh`** 等 **cansend** 脚本并发抢总线。
 
 **站立 `Running` 时再触发 `start`（话题或 □/L1+R1）**：话题会 **`ignore`**；手柄在 **`Running`** 分支**只处理**下电与 **`prone`**，**不会**执行 start，也**不会**先趴再起。
 
 **关于 `SoftProne` / `SoftStand` 的高度**：默认 **`track_body_pose_height:=true`** 时，进入 **`SoftProne`（含下电路径）** 会以**最近一次有效的 `body_pose.position.z`（与本节点发布同源话题）** 为起点插值到 `prone_z`，避免遥控压低高度后仍先抬回 `stand_z` 再趴。仅 **`prone` 路径**在趴下前会记录 **`stand_resume_z`**，随后 **`start` 站起** 时 `SoftStand` 插值到该高度而非固定 `stand_z`，减轻「站回名义高度再突然下落」的跳变。冷启动 **`Idle`→`start`** 仍用 `stand_z` 作为站起目标。跟踪超时（`body_pose_stale_s`）或无样本时回退到本节点**上次发布的 z**，再回退 `stand_z`。参数见 `power_sequence.yaml`。
 
-**`ProneHold` 与 `start`（站起）**：`ProneHold` 持续发布 **`prone_z`**（相对 CHAMP 名义高度的 z 增量，**不是**机械结构上的「全局最低点」）。从 **`ProneHold` 发 `start`** 只会进入 **`SoftStand`**：在 **`stand_z`↔`prone_z`** 上从趴姿插值回站姿，**不会**先发失能、也不会再走一遍 `EnableInit` 的使能/MIT 零帧（电机已在运行态）。若在 **`SoftProne`（趴下动画）尚未结束**时发 `start`，实现上会 **挂起**：动画结束后直接进入 **`SoftStand`**，避免第一次 `start` 被忽略、需连发两次的现象。
+**`ProneHold` 与 `start`（站起）**：`ProneHold` 持续发布 **`prone_z`**（相对 CHAMP 名义高度的 z 增量，**不是**机械结构上的「全局最低点」）。从 **`ProneHold` 发 `start`** 只会进入 **`SoftStand`**：在 **`stand_z`↔`prone_z`** 上从趴姿插值回站姿，**不会**先发失能、也不会再走一遍 `EnableInit` 的使能/MIT 保持帧（电机已在运行态）。若在 **`SoftProne`（趴下动画）尚未结束**时发 `start`，实现上会 **挂起**：动画结束后直接进入 **`SoftStand`**，避免第一次 `start` 被忽略、需连发两次的现象。
 
 **关于 `ros2 topic pub ... Waiting for at least 1 matching subscription(s)...`**：这是 **ROS 2 CLI 在等 DDS 发现订阅者**（`power_sequence_node` 未起来或 discovery 慢），与机体是否站立**无因果关系**；有/无这行日志都不应作为「站得好不好」的判断依据。
 
@@ -289,7 +293,38 @@ ros2 launch trotbot trotbot_basic.launch.py \
   use_status_led:=true
 ```
 
-**整机重启（同一参数）**：另开终端或结束当前 launch 后执行脚本——会先向运行中的 `ros2 launch trotbot trotbot_basic.launch.py` 发送 **SIGINT** 优雅退出，再以前台重新拉起（与工作空间路径、`TROTBOT_WS` 规则见脚本注释）。安装包后：
+**便捷控制脚本（后台运行，推荐）**：工作空间根目录的 `main.sh` 支持 `start / stop / restart / status`，**默认 `restart`**（先杀掉当前相关进程，再后台重启）。
+
+```bash
+cd ~/trotbot_ws
+
+./main.sh                 # 默认真机 restart
+./main.sh --sim           # 无硬件台架仿真 restart（不启动 CAN/灯带/PS4 反馈，带 RViz）
+./main.sh start --sim     # 仿真 start
+./main.sh stop
+./main.sh status
+
+# 额外参数原样追加给 ros2 launch（后出现的同名参数覆盖默认值）
+./main.sh restart use_status_led:=false
+```
+
+`--sim` 为无硬件台架模式：不启动 CAN 桥、电机、WS2812 和 PS4 反馈，启动 `quadruped_controller + champ_teleop + joy_node + RViz`，并设置 `block_body_pose_until_running:=false`，便于直接用左手柄查看步态和机体姿态（无物理接触/真实电机反馈）。
+
+> 仿真模式不启动 `power_sequence_node`，因此 **□（start）/ ○（prone）不会响应**；摇杆步态、△/✕ 高度、右摇杆姿态可用。△/✕ 高度增量限制为 `body_z_max=+0.015 m`、`body_z_min=-0.08 m`。
+
+`main.sh` 只是转发到 `src/trotbot/scripts/trotbot_ctl.sh`；也可直接调用后者，或安装后调用：
+
+```bash
+bash "$(ros2 pkg prefix trotbot)/share/trotbot/scripts/trotbot_ctl.sh" restart
+```
+
+- 默认真机参数：`use_can_bridge:=true use_teleop:=true use_joystick:=true use_xterm:=false rviz:=false use_status_led:=true block_body_pose_until_running:=true`。
+- `--sim` 参数：`use_can_bridge:=false use_teleop:=true use_joystick:=true use_xterm:=false rviz:=true use_status_led:=false use_ps4_feedback:=false block_body_pose_until_running:=false`。
+- 日志：`<workspace>/log/trotbot_ctl/stack.log`；PID：`<workspace>/log/trotbot_ctl/stack.pid`。
+- `stop/restart` 会清理本脚本启动的进程组，并兜底结束残留的 `trotbot_basic`、`champ_teleop`、`joy_node`、`ds4_feedback_node`、`status_led_node`、`power_sequence_node` 等相关进程（**包括手动启动的**）。
+- 工作空间可用 `TROTBOT_WS` 指定。
+
+**整机重启（前台方式，备选）**：另开终端或结束当前 launch 后执行脚本——会先向运行中的 `ros2 launch trotbot trotbot_basic.launch.py` 发送 **SIGINT** 优雅退出，再以前台重新拉起（与工作空间路径、`TROTBOT_WS` 规则见脚本注释）。安装包后：
 
 ```bash
 source ~/trotbot_ws/install/setup.bash   # 按实际路径
@@ -335,18 +370,18 @@ journalctl -u trotbot-basic.service -f
 
 本节对应 **单独再开一个终端** 拉的 `champ_teleop`（与 **`trotbot_basic` 整机栈**分开启动）。使用前请先 **`source install/setup.bash`**。
 
-#### 4.1 键盘（默认：只读键盘，`joy_node` 不启动）
+#### 4.1 键盘（默认同时启用手柄；纯键盘需关闭 `use_joystick`）
 
-默认会在 **`xterm`** 里打开键盘遥控窗口（需本机有图形桌面与 `DISPLAY`）。只有键盘时：
+默认会启动 **`joy_node` + 手柄灯条/振动反馈**，并在 **`xterm`** 里打开键盘遥控窗口（需本机有图形桌面与 `DISPLAY`）。只有键盘时显式关闭手柄：
 
 ```bash
-ros2 launch trotbot trotbot_teleop.launch.py
+ros2 launch trotbot trotbot_teleop.launch.py use_joystick:=false
 ```
 
 无桌面 / SSH 无 X11 时，在同一 TTY 里跑键盘（**不用 xterm**）：
 
 ```bash
-ros2 launch trotbot trotbot_teleop.launch.py use_xterm:=false
+ros2 launch trotbot trotbot_teleop.launch.py use_joystick:=false use_xterm:=false
 ```
 
 （需在**真实终端**里焦点在该窗口，否则读不到按键。）
@@ -370,13 +405,13 @@ ros2 launch trotbot trotbot_teleop.launch.py use_xterm:=false
 3. **先开整机栈**（另一终端，含 `quadruped_controller` 等），再开遥控：
 
    ```bash
-   ros2 launch trotbot trotbot_teleop.launch.py use_joystick:=true joystick_dev:=/dev/input/js0
+   ros2 launch trotbot trotbot_teleop.launch.py joystick_dev:=/dev/input/js0
    ```
 
-   `joystick_dev` 默认为 **`/dev/input/js0`**，与你的设备一致时可简写：
+   `use_joystick` 与 `joystick_dev` 默认分别为 **`true`** 与 **`/dev/input/js0`**，与你的设备一致时可直接：
 
    ```bash
-   ros2 launch trotbot trotbot_teleop.launch.py use_joystick:=true
+   ros2 launch trotbot trotbot_teleop.launch.py
    ```
 
 4. **可选自检**：确认 `/joy` 有数据：
@@ -384,6 +419,17 @@ ros2 launch trotbot trotbot_teleop.launch.py use_xterm:=false
    ```bash
    ros2 topic echo /joy --once
    ```
+
+5. **手柄灯条 / 振动反馈**（默认开启）：`trotbot_teleop.launch.py` 会同时启动 `ds4_feedback_node`，按狗子电源状态改变 PS4 灯条颜色，并在就绪/下电/故障/起步时振动。
+
+   ```bash
+   # 默认即启用；关闭：追加 use_ps4_feedback:=false
+   ros2 launch trotbot trotbot_teleop.launch.py
+   # 无手柄/无权限时节点不退出，只发布调试 JSON
+   ros2 topic echo /trotbot/ps4/feedback
+   ```
+
+   需要当前用户对 `/dev/hidraw*` 有读写权限（常见为 `dialout` 组）。灯色复用 `src/trotbot_status_led/config/status_led_map.yaml`，与 WS2812 灯带同语义，详见 [`src/trotbot_status_led/README.md`](src/trotbot_status_led/README.md)。
 
 #### 4.3 键盘和手柄是「二选一」吗？
 

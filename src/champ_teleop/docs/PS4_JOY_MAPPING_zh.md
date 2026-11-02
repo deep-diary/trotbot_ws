@@ -40,14 +40,16 @@ ros2 topic echo /joy
 
 高度 **△ / ✕** 由参数 **`joy_height_inc_button`** / **`joy_height_dec_button`** 指定索引，仓库默认 **`2 / 0`**（对应上表 CUH-ZCT2E）。
 
+高度增量范围由 **`body_z_max` / `body_z_min`** 控制，默认 **+0.015 m / -0.08 m**（相对 `nominal_height=0.2 m`），避免连续按 △ 抬到腿接近全伸。
+
 ---
 
 ## 三、脚本里尚未绑定的按键 / 轴
 
 下列在 **`champ_teleop` 代码中未读取**，`echo /joy` 会变但 **不影响该节点**：
 
-- **Share**（`power_sequence_node` 用作下电组合键之一）
-- **Options**（整机上由 **`power_sequence_node`** 用作维修 **`set_zero`** 长按触发；参数 **`button_option`**，勿与本表 Face 键默认混淆）
+- **Share**（`power_sequence_node`：`L1+R1+Share` 下电组合键；`Share+Options` 长按 3 s 触发一次性电机初始化）
+- **Options**（整机上由 **`power_sequence_node`** 用作维修 **`set_zero`** 的单键长按；与 **Share** 同按则改为 `motor_init`，不会 `set_zero`。参数 **`button_option`**，勿与本表 Face 键默认混淆）
 - **十字键**（多数驱动映射为 **`axes`** 额外项或独立 `buttons`，本脚本未用）
 - **触控板按下**（若有额外 `buttons`）
 - **`poseBindings`**（`f/h/r/y`）仅在早期键盘表里定义，**未接入 `poll_keys`**，等价未实现

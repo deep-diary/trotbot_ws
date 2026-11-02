@@ -64,9 +64,12 @@ class Teleop(Node):
         self.speed = self.get_parameter("speed").value
         self.turn = self.get_parameter("turn").value
 
-        # 键盘 t/b、手柄 △/✕：共用 body_pose.position.z 微调（相对于 nominal_height 的增量，±limit）
+        # 键盘 t/b、手柄 △/✕：共用 body_pose.position.z 微调（相对于 nominal_height 的增量）
+        # 上下限分别配置：nominal_height=0.2、腿长上限约 0.231；
+        # 0.03 时膝关节已到 -0.176（URDF 上限 -0.488，视觉接近伸直），因此上限收到 +0.015。
         self.declare_parameter("keyboard_body_z_step", 0.004)
-        self.declare_parameter("keyboard_body_z_limit", 0.5)
+        self.declare_parameter("body_z_max", 0.015)
+        self.declare_parameter("body_z_min", -0.08)
         # Face 按键编号随驱动而异；实测 CUH-ZCT2E/Linux：0=✕ 1=○ 2=△ 3=□ → 升高用 △(2)、降低用 ✕(0)
         self.declare_parameter("joy_height_inc_button", 2)
         self.declare_parameter("joy_height_dec_button", 0)
@@ -152,10 +155,17 @@ CTRL-C to quit
             self.get_logger().warn("stdin is not a TTY, running joystick-only mode (keyboard disabled)")
             self.spin_headless()
 
+    def _body_z_limits(self):
+        hi = float(self.get_parameter("body_z_max").value)
+        lo = float(self.get_parameter("body_z_min").value)
+        if hi < lo:
+            hi, lo = lo, hi
+        return lo, hi
+
     def _publish_keyboard_body_pose(self):
         """键盘专用：仅更新 height（与 joy 中 body_pose.position.z 语义一致）；姿态为单位四元数。"""
-        z_lim = float(self.get_parameter("keyboard_body_z_limit").value)
-        self._kb_body_z = max(-z_lim, min(z_lim, self._kb_body_z))
+        lo, hi = self._body_z_limits()
+        self._kb_body_z = max(lo, min(hi, self._kb_body_z))
 
         body_pose_lite = PoseLite()
         body_pose_lite.x = 0.0
@@ -199,18 +209,18 @@ CTRL-C to quit
         body_pose_lite.yaw = data.buttons[5] * data.axes[3] * 0.436332
 
         step = float(self.get_parameter("keyboard_body_z_step").value)
-        z_lim = float(self.get_parameter("keyboard_body_z_limit").value)
+        lo, hi = self._body_z_limits()
         inc_i = int(self.get_parameter("joy_height_inc_button").value)
         dec_i = int(self.get_parameter("joy_height_dec_button").value)
         if inc_i >= 0 and len(data.buttons) > inc_i:
             inc_on = bool(data.buttons[inc_i])
             if inc_on and not self._joy_height_inc_prev:
-                self._kb_body_z = min(z_lim, self._kb_body_z + step)
+                self._kb_body_z = min(hi, self._kb_body_z + step)
             self._joy_height_inc_prev = inc_on
         if dec_i >= 0 and len(data.buttons) > dec_i:
             dec_on = bool(data.buttons[dec_i])
             if dec_on and not self._joy_height_dec_prev:
-                self._kb_body_z = max(-z_lim, self._kb_body_z - step)
+                self._kb_body_z = max(lo, self._kb_body_z - step)
             self._joy_height_dec_prev = dec_on
 
         axis5_scale = float(self.get_parameter("joy_height_axis5_scale").value)
@@ -220,8 +230,8 @@ CTRL-C to quit
             if data.axes[5] < 0.0:
                 axis5_term = axis5_scale * data.axes[5]
 
-        self._kb_body_z = max(-z_lim, min(z_lim, self._kb_body_z))
-        body_pose_lite.z = max(-z_lim, min(z_lim, self._kb_body_z + axis5_term))
+        self._kb_body_z = max(lo, min(hi, self._kb_body_z))
+        body_pose_lite.z = max(lo, min(hi, self._kb_body_z + axis5_term))
 
         self.pose_lite_publisher.publish(body_pose_lite)
 
@@ -292,14 +302,14 @@ CTRL-C to quit
                 elif key == 't' or key == 'b':
                     cmd_attempts = 0
                     step = float(self.get_parameter("keyboard_body_z_step").value)
-                    z_lim = float(self.get_parameter("keyboard_body_z_limit").value)
+                    lo, hi = self._body_z_limits()
                     if key == 't':
                         self._kb_body_z += step
                     else:
                         self._kb_body_z -= step
-                    self._kb_body_z = max(-z_lim, min(z_lim, self._kb_body_z))
+                    self._kb_body_z = max(lo, min(hi, self._kb_body_z))
                     self._publish_keyboard_body_pose()
-                    print("body_pose z (keyboard) = %.4f m (limit ±%.2f)" % (self._kb_body_z, z_lim))
+                    print("body_pose z (keyboard) = %.4f m (limit %.2f .. %.2f)" % (self._kb_body_z, lo, hi))
 
                 else:
                     cmd_attempts = 0

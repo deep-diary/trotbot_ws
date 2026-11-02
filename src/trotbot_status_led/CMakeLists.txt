@@ -66,6 +66,11 @@ install(PROGRAMS scripts/test_status_led_manual.sh
   DESTINATION share/${PROJECT_NAME}/scripts
 )
 
+install(PROGRAMS scripts/ds4_feedback_node.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME ds4_feedback_node
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()

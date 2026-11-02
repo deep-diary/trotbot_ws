@@ -4,6 +4,7 @@
     body_pose_topic: body_pose
     cmd_vel_topic: cmd_vel
     tx_topic: /can_tx_frames
+    rx_topic: /can_rx_frames
     gate_topic: /power_sequence/gate_open
     state_topic: /power_sequence/state
     command_topic: /power_sequence/command
@@ -12,6 +13,7 @@
     motor_master_id: 253
 
     # 默认按键（PS4/Linux 常见：□=3 ○=1）：L1+R1 或 □长按 上电/start；L1+R1+Share 下电；○长按 prone（保持使能）
+    # Share + Options 长按：一次性电机初始化（写 zero_sta=1 并保存，断电重启后生效）
     # button_square: -1 可关闭「□ = start」
     button_l1: 4
     button_r1: 5
@@ -40,7 +42,8 @@
     stand_z: 0.0
     prone_z: -0.2
 
-    # RQ-024：维修后机械零位（与 URDF joint_offsets 标定不同层）。仅 Idle、门禁关、未使能流程时允许；与 send_set_zero_in_startup 无互斥，但日常仍建议关启动自动零位、用手柄/话题单独执行。
+    # RQ-024：维修后机械零位（与 URDF joint_offsets 标定不同层）。仅 Idle、门禁关、未使能流程时允许。
+    # 注意：Options 单独长按才触发 set_zero；同时按住 Share 时走「一次性电机初始化」，不会 set_zero。
     enable_remote_set_zero: true
     # PS4 Options：内核 joy 下标因驱动而异，务必 ros2 topic echo /joy 实测后填写；-1 关闭手柄触发（仍可用 /power_sequence/command set_zero）
     button_option: 9
@@ -52,10 +55,31 @@
     set_zero_repeat_count: 3
     set_zero_repeat_interval_ms: 40
 
-    # 启动默认不重设零位（zero_sta 已切换为 ±π）
-    send_set_zero_in_startup: false
+    # --- 一次性电机初始化（Share + Options 长按 3s）---
+    # 只配置断电位置域 zero_sta(0x7029)=1（上电按 -π~π 重建，即 ±180°），不改机械零位。
+    # 流程：写 0x7029 -> CMD 0x16 保存 flash -> CMD 0x11 回读校验；写后需断电重启才生效。
+    # 仅 Idle 且门禁关闭时允许；初始化期间屏蔽 start/shutdown/prone。
+    enable_remote_motor_init: true
+    motor_init_longpress_s: 3.0
+    motor_init_zero_sta: 1
+    motor_init_tick_ms: 50
+    motor_init_set_wait_ms: 200
+    motor_init_save_wait_ms: 500
+    motor_init_read_wait_ms: 600
+    # 非空则发布 motor_init_ok / motor_init_fail / motor_init_rejected / zero_sta_verify_* 事件
+    motor_init_event_topic: ""
+    # 上电只读自检：回读 12 路 zero_sta，不等于目标值时告警（不写参数）
+    verify_zero_sta_at_launch: true
+    zero_sta_verify_delay_s: 1.0
+
+    # --- 日常上电：不再 set_zero、不再发 MIT p=0 ---
     send_enable_in_startup: true
-    send_mit_zero_in_startup: true
+    # 使能后按各电机当前反馈角发一帧 MIT 保持（p=feedback），避免绕圈回零/站立脉冲
+    send_mit_hold_in_startup: true
+    # 12/12 反馈新鲜才允许使能；缺失时中止 start，且一个使能帧都不发
+    # 依赖 0x18 主动上报（enable_active_report_* 需为 true）
+    require_feedback_before_enable: true
+    motor_feedback_fresh_timeout_s: 1.0
 
     # 主动上报（通信类型 24 / CAN ID 0x18）：与 0x02 反馈同数据域，motor_protocol 统一解析；上电无查询反馈时 RViz 仍可刷新。
     # 下电 Disable 仅发失能，不关闭主动上报，便于 RViz 在全生命周期内仍能看到实际关节（关上报请用 el05_motor_cansend.sh reset 等）
@@ -69,7 +93,7 @@
     # 上报帧 ID 内主站字节；-1 表示与 motor_master_id 相同（若手册要求主站 0，可改为 0）
     active_report_master_id: -1
 
-    # MIT 首帧参数（与 control_gains.yaml 默认 kp/kd 一致，避免上电首帧过软）
+    # MIT 保持首帧参数：p=各电机当前反馈角，v=init_velocity，kp/kd 用下列值（与 control_gains.yaml 默认一致）
     init_kp: 50.0
     init_kd: 2.5
     init_velocity: 0.0

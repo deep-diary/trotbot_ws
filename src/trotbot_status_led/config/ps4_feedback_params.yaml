@@ -1,0 +1,50 @@
+# PS4（DualShock 4）灯条 + 振动反馈参数
+# 灯色复用 status_led_map.yaml，与 WS2812 灯带同语义。
+# 设备：自动扫描 /dev/hidraw*（VID 054C），也可用 hidraw_path 指定。
+# 权限：当前用户需对 /dev/hidraw* 可读写（常见为 dialout 组或 udev 规则）。
+ds4_feedback_node:
+  ros__parameters:
+    # 效果刷新率（灯条/振动/调试 JSON）
+    rate_hz: 15.0
+    # 无设备时的重扫周期（秒）
+    scan_period_s: 2.0
+    # 留空自动识别；例如 "/dev/hidraw2"
+    hidraw_path: ""
+
+    state_topic: "/power_sequence/state"
+    gate_topic: "/power_sequence/gate_open"
+    cmd_vel_topic: "/cmd_vel"
+    diagnostics_topic: "/diagnostics"
+    feedback_topic: "/trotbot/ps4/feedback"
+    # 调试 JSON 变化即发；无变化时按此周期心跳（便于 ros2 topic echo 验收）
+    feedback_publish_period_s: 1.0
+
+    # 电机故障诊断（需 trotbot_can_bridge 的 publish_motor_diagnostics=true）
+    enable_motor_fault_feedback: true
+    motor_diag_name_prefix: "trotbot_can_bridge:motor_feedback:"
+
+    # 灯语文件（相对路径按 trotbot_status_led share 解析）
+    state_map_file: "config/status_led_map.yaml"
+    global_brightness: 1.0
+
+    # 行走/静止：Running + gate_open 时按 /cmd_vel 判定
+    walk_linear_threshold: 0.02
+    walk_angular_threshold: 0.05
+    # 静止时的绿灯亮度比例（0.0~1.0）
+    walk_stand_brightness: 0.35
+    # 起步轻震（false 可关闭）
+    walk_start_rumble: true
+    walk_start_rumble_weak: 0.35
+    walk_start_rumble_duration_s: 0.08
+    walk_start_rumble_cooldown_s: 1.0
+
+    # 状态切换振动（强度 0.0~1.0）
+    rumble_enable_weak: 0.6
+    rumble_enable_duration_s: 0.12
+    rumble_shutdown_strong: 0.9
+    rumble_shutdown_duration_s: 0.5
+    rumble_fault_strong: 0.9
+    rumble_fault_duration_s: 0.2
+    rumble_fault_gap_s: 0.35
+    rumble_prone_weak: 0.5
+    rumble_prone_duration_s: 0.12

@@ -37,7 +37,8 @@
     # true：尚未收到该关节反馈时 velocity/effort 填 NaN；false：填 0（慎用：RViz 部分插件对 NaN 不友好时可将此项设为 false）
     feedback_joint_fill_nan: true
     # RQ-012 可选：模式字 / 温度 / 离散故障位 → diagnostic_msgs/DiagnosticArray（不经字符串日志）
-    publish_motor_diagnostics: false
+    # 供 ds4_feedback_node 检测电机故障（手柄红灯双闪 + 双震）；如无需求可改回 false
+    publish_motor_diagnostics: true
     motor_diagnostics_topic: /diagnostics
 
     # --- RQ-022：MIT 帧 tau_ff = Clamp(runtime_tau_bus + gravity_ff_scale * tau_ff_nominal_nm[i], kTMin, kTMax) ---
@@ -57,7 +58,8 @@
 
     # 电机模式上升沿（Reset/Cali -> Motor）触发平滑锚点重置
     # 规格书反馈模式：0=Reset, 1=Cali, 2=Motor
-    enable_mode_rising_smoothing: false
+    # 上电不再发 MIT p=0：使能瞬间把平滑锚点重置为当前实际反馈角，避免按启动前的旧锚点插值
+    enable_mode_rising_smoothing: true
     motor_enabled_mode_status: 2
 
     # 基于“当前位置反馈”的阈值步进发送（避免大步阶直接冲击）

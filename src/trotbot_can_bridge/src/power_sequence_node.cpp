@@ -66,6 +66,7 @@ public:
     gate_topic_ = this->declare_parameter<std::string>("gate_topic", "/power_sequence/gate_open");
     state_topic_ = this->declare_parameter<std::string>("state_topic", "/power_sequence/state");
     tx_topic_ = this->declare_parameter<std::string>("tx_topic", "/can_tx_frames");
+    rx_topic_ = this->declare_parameter<std::string>("rx_topic", "/can_rx_frames");
     body_pose_topic_ = this->declare_parameter<std::string>("body_pose_topic", "body_pose");
     cmd_vel_topic_ = this->declare_parameter<std::string>("cmd_vel_topic", "cmd_vel");
     joy_topic_ = this->declare_parameter<std::string>("joy_topic", "/joy");
@@ -94,9 +95,11 @@ public:
     init_kd_ = this->declare_parameter<double>("init_kd", 1.5);
     init_velocity_ = this->declare_parameter<double>("init_velocity", 0.0);
     init_tau_ = this->declare_parameter<double>("init_tau", 0.0);
-    send_set_zero_in_startup_ = this->declare_parameter<bool>("send_set_zero_in_startup", false);
     send_enable_in_startup_ = this->declare_parameter<bool>("send_enable_in_startup", true);
-    send_mit_zero_in_startup_ = this->declare_parameter<bool>("send_mit_zero_in_startup", true);
+    send_mit_hold_in_startup_ = this->declare_parameter<bool>("send_mit_hold_in_startup", true);
+    require_feedback_before_enable_ = this->declare_parameter<bool>("require_feedback_before_enable", true);
+    motor_feedback_fresh_timeout_s_ =
+      this->declare_parameter<double>("motor_feedback_fresh_timeout_s", 1.0);
     enable_active_report_in_startup_ = this->declare_parameter<bool>("enable_active_report_in_startup", true);
     active_report_hz_ = this->declare_parameter<double>("active_report_hz", 10.0);
     active_report_master_id_ = this->declare_parameter<int>("active_report_master_id", -1);
@@ -109,6 +112,24 @@ public:
     set_zero_event_topic_ = this->declare_parameter<std::string>("set_zero_event_topic", "");
     set_zero_repeat_count_ = this->declare_parameter<int>("set_zero_repeat_count", 3);
     set_zero_repeat_interval_ms_ = this->declare_parameter<int>("set_zero_repeat_interval_ms", 40);
+
+    enable_remote_motor_init_ = this->declare_parameter<bool>("enable_remote_motor_init", true);
+    motor_init_longpress_s_ = this->declare_parameter<double>("motor_init_longpress_s", 3.0);
+    motor_init_zero_sta_ = this->declare_parameter<int>("motor_init_zero_sta", 1);
+    motor_init_tick_ms_ = this->declare_parameter<int>("motor_init_tick_ms", 50);
+    motor_init_set_wait_ms_ = this->declare_parameter<int>("motor_init_set_wait_ms", 200);
+    motor_init_save_wait_ms_ = this->declare_parameter<int>("motor_init_save_wait_ms", 500);
+    motor_init_read_wait_ms_ = this->declare_parameter<int>("motor_init_read_wait_ms", 600);
+    motor_init_event_topic_ = this->declare_parameter<std::string>("motor_init_event_topic", "");
+    verify_zero_sta_at_launch_ = this->declare_parameter<bool>("verify_zero_sta_at_launch", true);
+    zero_sta_verify_delay_s_ = this->declare_parameter<double>("zero_sta_verify_delay_s", 1.0);
+    if (motor_init_zero_sta_ != 0 && motor_init_zero_sta_ != 1) {
+      RCLCPP_WARN(
+        this->get_logger(), "motor_init_zero_sta=%d invalid, fallback to 1", motor_init_zero_sta_);
+      motor_init_zero_sta_ = 1;
+    }
+    motor_init_readback_.fill(-1);
+    motor_init_has_readback_.fill(false);
 
     track_body_pose_height_ = this->declare_parameter<bool>("track_body_pose_height", true);
     body_pose_stale_s_ = this->declare_parameter<double>("body_pose_stale_s", 2.0);
@@ -127,9 +148,15 @@ public:
     if (!set_zero_event_topic_.empty()) {
       event_pub_ = this->create_publisher<String>(set_zero_event_topic_, 10);
     }
+    if (!motor_init_event_topic_.empty()) {
+      motor_init_event_pub_ = this->create_publisher<String>(motor_init_event_topic_, 10);
+    }
     joy_sub_ = this->create_subscription<Joy>(joy_topic_, 10, std::bind(&PowerSequenceNode::OnJoy, this, std::placeholders::_1));
     command_sub_ = this->create_subscription<String>(
       command_topic_, 10, std::bind(&PowerSequenceNode::OnCommand, this, std::placeholders::_1));
+    rx_sub_ = this->create_subscription<UInt8MultiArray>(
+      rx_topic_, rclcpp::SensorDataQoS(),
+      std::bind(&PowerSequenceNode::OnCanRxFrame, this, std::placeholders::_1));
     if (track_body_pose_height_) {
       body_pose_sub_ = this->create_subscription<Pose>(
         body_pose_topic_, rclcpp::QoS(10),
@@ -139,6 +166,18 @@ public:
     timer_ = this->create_wall_timer(
       std::chrono::milliseconds(std::max(5, timer_period_ms_)),
       std::bind(&PowerSequenceNode::OnTimer, this));
+
+    motor_init_timer_ = this->create_wall_timer(
+      std::chrono::milliseconds(std::max(10, motor_init_tick_ms_)),
+      std::bind(&PowerSequenceNode::TickMotorInit, this));
+
+    if (verify_zero_sta_at_launch_) {
+      const int verify_ms = std::max(
+        200, static_cast<int>(std::lround(zero_sta_verify_delay_s_ * 1000.0)));
+      verify_timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(verify_ms),
+        std::bind(&PowerSequenceNode::OnVerifyZeroStaTimer, this));
+    }
 
     if (enable_active_report_in_startup_ && enable_active_report_at_launch_) {
       const int boot_ms = std::max(0, static_cast<int>(std::lround(active_report_boot_delay_s_ * 1000.0)));
@@ -153,6 +192,9 @@ public:
   }
 
 private:
+  /// 一次性电机初始化（只在 Idle + 门禁关时执行）：写 zero_sta → 保存 flash → 回读校验
+  enum class MotorInitPhase { Idle, SetZeroSta, SaveParams, ReadBack };
+
   static constexpr uint8_t kCmdEnable = 0x03;
   static constexpr uint8_t kCmdReset = 0x04;
   static constexpr uint8_t kCmdSetZero = 0x06;
@@ -185,6 +227,34 @@ private:
     has_joy_ = true;
   }
 
+  void OnCanRxFrame(const UInt8MultiArray::SharedPtr msg)
+  {
+    const auto frame = FrameCodec::Unpack(*msg);
+    if (!frame.has_value()) {
+      return;
+    }
+
+    // 1) 缓存电机反馈角（MIT 域 rad）：供上电「按当前反馈保持」与反馈新鲜度校验
+    if (const auto fb = ProtocolCodec::DecodeFeedback(frame.value()); fb.has_value()) {
+      if (static_cast<size_t>(fb->motor_id) < last_feedback_angle_rad_.size()) {
+        last_feedback_angle_rad_[fb->motor_id] = fb->current_angle;
+        last_feedback_stamp_ns_[fb->motor_id] = this->now().nanoseconds();
+      }
+    }
+
+    // 2) 初始化/自检的回读阶段：收集 0x7029 应答
+    if (motor_init_active_ && motor_init_phase_ == MotorInitPhase::ReadBack) {
+      if (const auto rsp = ProtocolCodec::DecodeGetParamResponse(
+          frame.value(), static_cast<uint8_t>(motor_master_id_));
+        rsp.has_value() && rsp->param_id == ProtocolCodec::kParamZeroSta &&
+        static_cast<size_t>(rsp->motor_id) < motor_init_readback_.size())
+      {
+        motor_init_readback_[rsp->motor_id] = rsp->value_u8;
+        motor_init_has_readback_[rsp->motor_id] = true;
+      }
+    }
+  }
+
   static std::string ToLower(std::string value)
   {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
@@ -196,6 +266,18 @@ private:
   void OnCommand(const String::SharedPtr msg)
   {
     const std::string command = ToLower(msg->data);
+    if (command == "motor_init") {
+      (void)BeginMotorInit("command", false);
+      return;
+    }
+    if (
+      motor_init_active_ &&
+      (command == "start" || command == "prone" || command == "shutdown"))
+    {
+      RCLCPP_WARN(
+        this->get_logger(), "ignore command=%s: motor_init in progress", command.c_str());
+      return;
+    }
     if (command == "start") {
       if (state_ == SequenceState::Idle) {
         use_stand_resume_for_softstand_ = false;
@@ -242,7 +324,8 @@ private:
       return;
     }
     RCLCPP_WARN(
-      this->get_logger(), "unknown command=%s (supported: start/prone/shutdown/set_zero)", command.c_str());
+      this->get_logger(),
+      "unknown command=%s (supported: start/prone/shutdown/set_zero/motor_init)", command.c_str());
   }
 
   bool ButtonOn(int idx) const
@@ -257,9 +340,13 @@ private:
   {
     const double dt = static_cast<double>(std::max(5, timer_period_ms_)) / 1000.0;
 
-    // RQ-024：PS4 Options（可配置）长按 → 12 路机械 set_zero；仅 TryRemoteSetZero 内允许 Idle+门禁关
-    const bool option_btn =
-      (button_option_ >= 0) && enable_remote_set_zero_ && ButtonOn(button_option_);
+    TickMotorInit();
+
+    const bool share = ButtonOn(button_share_);
+    const bool option_pressed = (button_option_ >= 0) && ButtonOn(button_option_);
+
+    // RQ-024：PS4 Options 单独长按 → 12 路机械 set_zero；与 Share+Options 初始化组合键互斥
+    const bool option_btn = option_pressed && !share && enable_remote_set_zero_;
     option_hold_s_ = option_btn ? (option_hold_s_ + dt) : 0.0;
     if (!option_btn) {
       option_action_done_this_hold_ = false;
@@ -269,9 +356,24 @@ private:
       option_action_done_this_hold_ = true;
     }
 
+    // 一次性电机初始化：Share + Options 长按（写 zero_sta=1 并保存到电机 flash）
+    const bool init_combo = option_pressed && share;
+    init_hold_s_ = init_combo ? (init_hold_s_ + dt) : 0.0;
+    if (!init_combo) {
+      init_latch_ = false;
+    }
+    if (init_combo && !init_latch_ && init_hold_s_ >= motor_init_longpress_s_) {
+      init_latch_ = true;
+      (void)BeginMotorInit("joy", false);
+    }
+
+    // 初始化期间屏蔽一切运动触发（start/shutdown/prone），避免中途开门禁或使能
+    if (motor_init_active_) {
+      return;
+    }
+
     const bool l1 = ButtonOn(button_l1_);
     const bool r1 = ButtonOn(button_r1_);
-    const bool share = ButtonOn(button_share_);
     const bool circle = ButtonOn(button_circle_);
     const bool square = (button_square_ >= 0) && ButtonOn(button_square_);
 
@@ -367,8 +469,10 @@ private:
         break;
       case SequenceState::EnableInit:
         if (!init_sent_) {
-          DoEnableInitFrames();
           init_sent_ = true;
+          if (!DoEnableInitFrames()) {
+            break;
+          }
         }
         PublishHoldPose(prone_z_);
         if (elapsed_in_state_s_ >= init_hold_duration_s_) {
@@ -552,10 +656,19 @@ private:
     cmd_vel_pub_->publish(tw);
   }
 
-  void DoEnableInitFrames()
+  bool DoEnableInitFrames()
   {
-    if (send_set_zero_in_startup_) {
-      SendSetZeroAll();
+    // 上电不再 set_zero / 不再发 MIT p=0：先要求 12/12 反馈新鲜，否则一个使能帧都不发
+    if (require_feedback_before_enable_) {
+      const size_t fresh = CountFreshFeedback();
+      if (fresh < DogMapper::kTemporaryIndexMap.size()) {
+        RCLCPP_ERROR(
+          this->get_logger(),
+          "abort start: feedback %zu/%zu fresh (timeout=%.2fs); no enable frames sent",
+          fresh, DogMapper::kTemporaryIndexMap.size(), motor_feedback_fresh_timeout_s_);
+        EnterState(SequenceState::Idle);
+        return false;
+      }
     }
     if (enable_active_report_in_startup_ && send_enable_in_startup_) {
       const uint16_t scan = HzToEpScanTime(active_report_hz_);
@@ -568,13 +681,14 @@ private:
     if (send_enable_in_startup_) {
       SendCmdAll(kCmdEnable);
     }
-    if (send_mit_zero_in_startup_) {
-      SendMitZeroAll();
+    if (send_mit_hold_in_startup_) {
+      SendMitHoldAll();
     }
     if (enable_active_report_in_startup_ && send_enable_in_startup_) {
       SendActiveReportAll(true);
       RCLCPP_INFO(this->get_logger(), "active report: COMM 0x18 ON (all motors)");
     }
+    return true;
   }
 
   int ReportMasterForCanId() const
@@ -623,6 +737,16 @@ private:
     String msg;
     msg.data = payload;
     event_pub_->publish(msg);
+  }
+
+  void PublishMotorInitEvent(const std::string & payload)
+  {
+    if (!motor_init_event_pub_) {
+      return;
+    }
+    String msg;
+    msg.data = payload;
+    motor_init_event_pub_->publish(msg);
   }
 
   bool TryRemoteSetZero(const char * trigger)
@@ -675,19 +799,223 @@ private:
     }
   }
 
-  void SendMitZeroAll()
+  size_t CountFreshFeedback() const
   {
+    const int64_t now_ns = this->now().nanoseconds();
+    const int64_t fresh_ns = static_cast<int64_t>(motor_feedback_fresh_timeout_s_ * 1e9);
+    size_t fresh = 0;
     for (const auto & route : DogMapper::kTemporaryIndexMap) {
-      auto frame = ProtocolCodec::BuildMitControlFrame(
+      const int64_t stamp = last_feedback_stamp_ns_[route.motor_id];
+      if (stamp > 0 && (now_ns - stamp) <= fresh_ns) {
+        ++fresh;
+      }
+    }
+    return fresh;
+  }
+
+  /// 使能首帧：按各电机当前反馈角保持（绝不再用 p=0），避免绕圈回零
+  void SendMitHoldAll()
+  {
+    const int64_t now_ns = this->now().nanoseconds();
+    const int64_t fresh_ns = static_cast<int64_t>(motor_feedback_fresh_timeout_s_ * 1e9);
+    int missing = 0;
+    for (const auto & route : DogMapper::kTemporaryIndexMap) {
+      const int64_t stamp = last_feedback_stamp_ns_[route.motor_id];
+      if (stamp <= 0 || (now_ns - stamp) > fresh_ns) {
+        ++missing;
+        continue;
+      }
+      const auto frame = ProtocolCodec::BuildMitControlFrame(
         route.bus,
         route.motor_id,
-        0.0f,
+        static_cast<float>(last_feedback_angle_rad_[route.motor_id]),
         static_cast<float>(init_velocity_),
         static_cast<float>(init_kp_),
         static_cast<float>(init_kd_),
         static_cast<float>(init_tau_));
       tx_pub_->publish(FrameCodec::Pack(frame));
     }
+    if (missing > 0) {
+      RCLCPP_WARN(
+        this->get_logger(), "mit hold: %d motor(s) skipped (no fresh feedback)", missing);
+    } else {
+      RCLCPP_INFO(
+        this->get_logger(),
+        "mit hold: 12 motors anchored at current feedback (kp=%.1f kd=%.2f)", init_kp_, init_kd_);
+    }
+  }
+
+  bool BeginMotorInit(const char * trigger, bool verify_only)
+  {
+    if (motor_init_active_) {
+      RCLCPP_WARN(this->get_logger(), "motor_init ignored (%s): already running", trigger);
+      return false;
+    }
+    if (!verify_only && !enable_remote_motor_init_) {
+      RCLCPP_WARN(
+        this->get_logger(), "motor_init rejected (%s): enable_remote_motor_init=false", trigger);
+      PublishMotorInitEvent(std::string("motor_init_rejected:disabled:") + trigger);
+      return false;
+    }
+    if (state_ != SequenceState::Idle || gate_open_) {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "motor_init rejected (%s): require state=Idle and gate_open=false (now state=%s gate_open=%d)",
+        trigger, StateName(state_), gate_open_ ? 1 : 0);
+      std::ostringstream oss;
+      oss << "motor_init_rejected:" << StateName(state_) << ":gate=" << (gate_open_ ? 1 : 0)
+          << ":" << trigger;
+      PublishMotorInitEvent(oss.str());
+      return false;
+    }
+
+    motor_init_readback_.fill(-1);
+    motor_init_has_readback_.fill(false);
+    motor_init_verify_only_ = verify_only;
+    motor_init_active_ = true;
+    motor_init_phase_armed_ = false;
+    motor_init_phase_time_ = this->now();
+    if (verify_only) {
+      motor_init_phase_ = MotorInitPhase::ReadBack;
+      RCLCPP_INFO(
+        this->get_logger(), "zero_sta self-check (%s): read-only probe of 0x%04X",
+        trigger, ProtocolCodec::kParamZeroSta);
+    } else {
+      motor_init_phase_ = MotorInitPhase::SetZeroSta;
+      RCLCPP_WARN(
+        this->get_logger(),
+        "motor_init start (%s): write zero_sta(0x%04X)=%d -> save -> verify (12 motors); "
+        "effective only after power cycle",
+        trigger, ProtocolCodec::kParamZeroSta, motor_init_zero_sta_);
+    }
+    return true;
+  }
+
+  void TickMotorInit()
+  {
+    if (!motor_init_active_) {
+      return;
+    }
+    const double elapsed_ms = (this->now() - motor_init_phase_time_).seconds() * 1000.0;
+    const uint8_t master = static_cast<uint8_t>(motor_master_id_);
+
+    switch (motor_init_phase_) {
+      case MotorInitPhase::SetZeroSta:
+        if (!motor_init_phase_armed_) {
+          for (const auto & route : DogMapper::kTemporaryIndexMap) {
+            tx_pub_->publish(FrameCodec::Pack(ProtocolCodec::BuildSetParamU8Frame(
+              route.bus, route.motor_id, ProtocolCodec::kParamZeroSta,
+              static_cast<uint8_t>(motor_init_zero_sta_), master)));
+          }
+          motor_init_phase_armed_ = true;
+          RCLCPP_WARN(
+            this->get_logger(), "motor_init: wrote 0x%04X=%d to 12 motors",
+            ProtocolCodec::kParamZeroSta, motor_init_zero_sta_);
+        }
+        if (elapsed_ms >= static_cast<double>(motor_init_set_wait_ms_)) {
+          EnterMotorInitPhase(MotorInitPhase::SaveParams);
+        }
+        break;
+      case MotorInitPhase::SaveParams:
+        if (!motor_init_phase_armed_) {
+          for (const auto & route : DogMapper::kTemporaryIndexMap) {
+            tx_pub_->publish(
+              FrameCodec::Pack(ProtocolCodec::BuildSaveParamFrame(route.bus, route.motor_id, master)));
+          }
+          motor_init_phase_armed_ = true;
+          RCLCPP_WARN(
+            this->get_logger(), "motor_init: save params (CMD 0x16, data 01..08) to 12 motors");
+        }
+        if (elapsed_ms >= static_cast<double>(motor_init_save_wait_ms_)) {
+          EnterMotorInitPhase(MotorInitPhase::ReadBack);
+        }
+        break;
+      case MotorInitPhase::ReadBack:
+        if (!motor_init_phase_armed_) {
+          for (const auto & route : DogMapper::kTemporaryIndexMap) {
+            tx_pub_->publish(FrameCodec::Pack(ProtocolCodec::BuildGetParamFrame(
+              route.bus, route.motor_id, ProtocolCodec::kParamZeroSta, master)));
+          }
+          motor_init_phase_armed_ = true;
+        }
+        if (elapsed_ms >= static_cast<double>(motor_init_read_wait_ms_)) {
+          FinishMotorInit();
+        }
+        break;
+      case MotorInitPhase::Idle:
+      default:
+        break;
+    }
+  }
+
+  void EnterMotorInitPhase(MotorInitPhase next)
+  {
+    motor_init_phase_ = next;
+    motor_init_phase_time_ = this->now();
+    motor_init_phase_armed_ = false;
+  }
+
+  void FinishMotorInit()
+  {
+    const int total = static_cast<int>(DogMapper::kTemporaryIndexMap.size());
+    int ok = 0;
+    std::ostringstream missing;
+    for (const auto & route : DogMapper::kTemporaryIndexMap) {
+      const uint8_t mid = route.motor_id;
+      if (motor_init_has_readback_[mid] && motor_init_readback_[mid] == motor_init_zero_sta_) {
+        ++ok;
+      } else {
+        if (missing.tellp() > 0) {
+          missing << ",";
+        }
+        missing << static_cast<int>(mid);
+      }
+    }
+
+    std::ostringstream oss;
+    if (motor_init_verify_only_) {
+      if (ok == total) {
+        oss << "zero_sta_verify_ok:" << motor_init_zero_sta_;
+        RCLCPP_INFO(this->get_logger(), "%s (%d/%d)", oss.str().c_str(), ok, total);
+      } else {
+        oss << "zero_sta_verify_fail:" << motor_init_zero_sta_ << ":ok=" << ok << "/" << total
+            << ":missing=" << missing.str();
+        RCLCPP_WARN(
+          this->get_logger(),
+          "%s — 未完成一次性电机初始化，请 Share+Options 长按 %.1fs（写后需断电重启生效）",
+          oss.str().c_str(), motor_init_longpress_s_);
+      }
+    } else if (ok == total) {
+      oss << "motor_init_ok:zero_sta=" << motor_init_zero_sta_ << ":" << ok << "/" << total;
+      RCLCPP_WARN(
+        this->get_logger(), "%s — 已保存到电机 flash；请断电重启后生效", oss.str().c_str());
+    } else {
+      oss << "motor_init_fail:zero_sta=" << motor_init_zero_sta_ << ":ok=" << ok << "/" << total
+          << ":missing=" << missing.str();
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "%s — 参数可能已写入但回读不全，请检查总线/固件或用脚本复查", oss.str().c_str());
+    }
+    PublishMotorInitEvent(oss.str());
+
+    motor_init_active_ = false;
+    motor_init_phase_ = MotorInitPhase::Idle;
+    motor_init_phase_armed_ = false;
+    motor_init_verify_only_ = false;
+  }
+
+  void OnVerifyZeroStaTimer()
+  {
+    if (verify_timer_) {
+      verify_timer_->cancel();
+    }
+    if (state_ != SequenceState::Idle || gate_open_ || motor_init_active_) {
+      RCLCPP_INFO(
+        this->get_logger(), "skip zero_sta self-check: state=%s gate_open=%d",
+        StateName(state_), gate_open_ ? 1 : 0);
+      return;
+    }
+    (void)BeginMotorInit("launch", true);
   }
 
   CanFrameMessage BuildCmdFrame(CanBus bus, uint8_t motor_id, uint8_t cmd, int master_id) const
@@ -706,6 +1034,7 @@ private:
   std::string gate_topic_;
   std::string state_topic_;
   std::string tx_topic_;
+  std::string rx_topic_;
   std::string body_pose_topic_;
   std::string cmd_vel_topic_;
   std::string joy_topic_;
@@ -733,9 +1062,10 @@ private:
   double init_kd_{1.5};
   double init_velocity_{0.0};
   double init_tau_{0.0};
-  bool send_set_zero_in_startup_{false};
   bool send_enable_in_startup_{true};
-  bool send_mit_zero_in_startup_{true};
+  bool send_mit_hold_in_startup_{true};
+  bool require_feedback_before_enable_{true};
+  double motor_feedback_fresh_timeout_s_{1.0};
   bool enable_active_report_in_startup_{true};
   double active_report_hz_{10.0};
   int active_report_master_id_{-1};
@@ -750,6 +1080,30 @@ private:
   int set_zero_repeat_interval_ms_{40};
   double option_hold_s_{0.0};
   bool option_action_done_this_hold_{false};
+
+  bool enable_remote_motor_init_{true};
+  double motor_init_longpress_s_{3.0};
+  int motor_init_zero_sta_{1};
+  int motor_init_tick_ms_{50};
+  int motor_init_set_wait_ms_{200};
+  int motor_init_save_wait_ms_{500};
+  int motor_init_read_wait_ms_{600};
+  std::string motor_init_event_topic_;
+  bool verify_zero_sta_at_launch_{true};
+  double zero_sta_verify_delay_s_{1.0};
+  MotorInitPhase motor_init_phase_{MotorInitPhase::Idle};
+  bool motor_init_active_{false};
+  bool motor_init_verify_only_{false};
+  bool motor_init_phase_armed_{false};
+  rclcpp::Time motor_init_phase_time_;
+  std::array<int, 64> motor_init_readback_{};
+  std::array<bool, 64> motor_init_has_readback_{};
+  double init_hold_s_{0.0};
+  bool init_latch_{false};
+
+  // 电机反馈缓存（按 motor_id 索引，ID ≤ 63）：MIT 域 rad
+  std::array<double, 64> last_feedback_angle_rad_{};
+  std::array<int64_t, 64> last_feedback_stamp_ns_{};
 
   bool track_body_pose_height_{true};
   double body_pose_stale_s_{2.0};
@@ -787,10 +1141,14 @@ private:
   rclcpp::Publisher<Bool>::SharedPtr gate_pub_;
   rclcpp::Publisher<String>::SharedPtr state_pub_;
   rclcpp::Publisher<String>::SharedPtr event_pub_;
+  rclcpp::Publisher<String>::SharedPtr motor_init_event_pub_;
   rclcpp::Subscription<Joy>::SharedPtr joy_sub_;
   rclcpp::Subscription<String>::SharedPtr command_sub_;
+  rclcpp::Subscription<UInt8MultiArray>::SharedPtr rx_sub_;
   rclcpp::Subscription<Pose>::SharedPtr body_pose_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::TimerBase::SharedPtr motor_init_timer_;
+  rclcpp::TimerBase::SharedPtr verify_timer_;
   rclcpp::TimerBase::SharedPtr boot_report_timer_;
   bool boot_active_report_done_{false};
 };

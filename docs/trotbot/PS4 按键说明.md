@@ -90,6 +90,8 @@ flowchart LR
 | `buttons[2]` / `buttons[0]`（默认可改） | 离散步进高度 | △ 升 / ✕ 降 `body_pose.position.z` |
 | `axes[5] < 0`（默认可关） | 连续趴低 | R2 行程叠加 `body_pose.position.z` |
 
+> 高度增量范围由 `body_z_max=+0.015 m`、`body_z_min=-0.08 m` 限制（相对 `nominal_height=0.2 m`），避免 △ 连续抬高到腿接近全伸的位置。
+
 ---
 
 ## 4. `power_sequence_node` 使用的键（`power_sequence.yaml`）
@@ -116,7 +118,25 @@ flowchart LR
 
 ---
 
-## 6. 相关文档路径
+## 6. 手柄灯条 / 振动反馈（状态反馈）
+
+`trotbot_teleop.launch.py` 默认随遥控启动 `ds4_feedback_node`（可用 `use_ps4_feedback:=false` 关闭），把手柄灯条与振动作为狗子状态反馈：
+
+| 狗子状态 | 手柄灯条 | 振动 |
+|----------|----------|------|
+| Idle / Disable / SoftProne（gate 关） | 按 `status_led_map.yaml` 对应颜色（Idle 蓝、Disable 深蓝、SoftProne 橙红） | 进入时强震 0.5 s |
+| Precheck / EnableInit / SoftStand | 橙 / 黄（上电流程） | 无 |
+| Running + gate 开 | 绿；行走高亮、静止压暗到 35% | 进入时弱震 0.12 s；起步弱震 0.08 s |
+| ProneHold | 蓝 | 进入时弱震 0.12 s |
+| Fault / 电机诊断故障 | 红灯双闪 | 双强震（各 0.2 s，间隔 0.35 s） |
+
+- 灯色来源：[`../../src/trotbot_status_led/config/status_led_map.yaml`](../../src/trotbot_status_led/config/status_led_map.yaml)。
+- 电机故障来源：`/diagnostics` 中 `trotbot_can_bridge:motor_feedback:*`（需 `publish_motor_diagnostics: true`，默认已开）。
+- 调试：`ros2 topic echo /trotbot/ps4/feedback`（JSON，变化即发 + 1 s 心跳）。
+- 权限：当前用户需可读写 `/dev/hidraw*`（`dialout` 组或 udev 规则）。
+- 完整说明：[`../../src/trotbot_status_led/README.md`](../../src/trotbot_status_led/README.md) 的「PS4 手柄灯条 / 振动反馈」章节。
+
+## 7. 相关文档路径
 
 | 文档 | 说明 |
 |------|------|

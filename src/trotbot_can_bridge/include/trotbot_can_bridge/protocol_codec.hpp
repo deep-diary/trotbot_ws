@@ -19,6 +19,12 @@ public:
   static constexpr uint8_t kMotorCmdFeedback = 0x02;  // 电机反馈（应答）
   /// 手册通信类型 24：主动周期上报，29bit ID 高 5 位为 0x18，8B 数据域与 0x02 反馈相同
   static constexpr uint8_t kMotorCmdActiveReport = 0x18;
+  static constexpr uint8_t kMotorCmdGetParam = 0x11;   // 读参数
+  static constexpr uint8_t kMotorCmdSetParam = 0x12;   // 写参数
+  static constexpr uint8_t kMotorCmdSaveParam = 0x16;  // 参数保存到 flash
+
+  /// zero_sta：断电位置域。0=上电按 0~2π 重建，1=按 -π~π 重建（即 ±180°）
+  static constexpr uint16_t kParamZeroSta = 0x7029;
 
   static constexpr float kPMin = -12.57f;
   static constexpr float kPMax = 12.57f;
@@ -57,6 +63,77 @@ public:
     out.data[6] = static_cast<uint8_t>((kd_u16 >> 8) & 0xFF);
     out.data[7] = static_cast<uint8_t>(kd_u16 & 0xFF);
     return out;
+  }
+
+  struct GetParamResponse
+  {
+    uint8_t motor_id{0};
+    uint16_t param_id{0};
+    uint8_t value_u8{0};
+  };
+
+  /// 写参数（uint8 形式）：CMD 0x12，data[0..1]=param 小端，data[4]=value
+  static CanFrameMessage BuildSetParamU8Frame(
+    CanBus bus, uint8_t motor_id, uint16_t param_id, uint8_t value, uint8_t master_id = 253)
+  {
+    CanFrameMessage out;
+    out.bus = bus;
+    out.is_extended = true;
+    out.dlc = 8;
+    out.can_id = BuildCommandCanId(kMotorCmdSetParam, master_id, motor_id);
+    out.data[0] = static_cast<uint8_t>(param_id & 0xFF);
+    out.data[1] = static_cast<uint8_t>((param_id >> 8) & 0xFF);
+    out.data[4] = value;
+    return out;
+  }
+
+  /// 保存参数：CMD 0x16，data 固定 01..08（全 0 不会触发保存）
+  static CanFrameMessage BuildSaveParamFrame(
+    CanBus bus, uint8_t motor_id, uint8_t master_id = 253)
+  {
+    CanFrameMessage out;
+    out.bus = bus;
+    out.is_extended = true;
+    out.dlc = 8;
+    out.can_id = BuildCommandCanId(kMotorCmdSaveParam, master_id, motor_id);
+    for (size_t i = 0; i < out.data.size(); ++i) {
+      out.data[i] = static_cast<uint8_t>(i + 1);
+    }
+    return out;
+  }
+
+  /// 读参数：CMD 0x11，data[0..1]=param 小端
+  static CanFrameMessage BuildGetParamFrame(
+    CanBus bus, uint8_t motor_id, uint16_t param_id, uint8_t master_id = 253)
+  {
+    CanFrameMessage out;
+    out.bus = bus;
+    out.is_extended = true;
+    out.dlc = 8;
+    out.can_id = BuildCommandCanId(kMotorCmdGetParam, master_id, motor_id);
+    out.data[0] = static_cast<uint8_t>(param_id & 0xFF);
+    out.data[1] = static_cast<uint8_t>((param_id >> 8) & 0xFF);
+    return out;
+  }
+
+  /// 读参数应答：cmd_type 必须为 0x11；应答帧低字节=主站、次字节=电机 ID
+  static std::optional<GetParamResponse> DecodeGetParamResponse(
+    const CanFrameMessage & frame, uint8_t master_id = 253)
+  {
+    const uint8_t cmd_type = static_cast<uint8_t>((frame.can_id >> 24) & 0x1F);
+    if (cmd_type != kMotorCmdGetParam) {
+      return std::nullopt;
+    }
+    // 请求帧低字节是电机 ID，应答帧低字节是主站 ID；据此过滤请求回环
+    if (static_cast<uint8_t>(frame.can_id & 0xFF) != master_id) {
+      return std::nullopt;
+    }
+    GetParamResponse rsp;
+    rsp.motor_id = static_cast<uint8_t>((frame.can_id >> 8) & 0xFF);
+    rsp.param_id =
+      static_cast<uint16_t>(frame.data[0] | (static_cast<uint16_t>(frame.data[1]) << 8));
+    rsp.value_u8 = frame.data[4];
+    return rsp;
   }
 
   static std::optional<MotorFeedback> DecodeFeedback(const CanFrameMessage & frame)
@@ -146,6 +223,15 @@ private:
   static uint16_t U16Be(uint8_t high, uint8_t low)
   {
     return static_cast<uint16_t>((static_cast<uint16_t>(high) << 8) | low);
+  }
+
+  static uint32_t BuildCommandCanId(uint8_t cmd, uint8_t master_id, uint8_t motor_id)
+  {
+    uint32_t id = 0;
+    id |= (static_cast<uint32_t>(cmd) << 24);
+    id |= (static_cast<uint32_t>(master_id) << 8);
+    id |= static_cast<uint32_t>(motor_id);
+    return id & 0x1FFFFFFFu;
   }
 
   static uint32_t BuildMitControlCanId(uint8_t motor_id, uint16_t torque_u16)

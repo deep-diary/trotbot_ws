@@ -12,14 +12,14 @@
 # - Both interfaces can run simultaneously for flexibility
 #
 # USAGE:
-#   Keyboard only:
+#   Keyboard + Joystick（默认，含 PS4 灯条/振动反馈）:
 #     ros2 launch trotbot trotbot_teleop.launch.py
 #
-#   Keyboard + Joystick:
-#     ros2 launch trotbot trotbot_teleop.launch.py use_joystick:=true
+#   Keyboard only（不启动 joy_node）:
+#     ros2 launch trotbot trotbot_teleop.launch.py use_joystick:=false
 #
 #   Custom joystick device (/dev/input/jsN — N 会传给 ROS 2 joy_node 的 device_id):
-#     ros2 launch trotbot trotbot_teleop.launch.py use_joystick:=true joystick_dev:=/dev/input/js1
+#     ros2 launch trotbot trotbot_teleop.launch.py joystick_dev:=/dev/input/js1
 #
 # NOTE: This launch file only provides the teleop interface. You must also run:
 #   ros2 launch trotbot trotbot_basic.launch.py
@@ -29,8 +29,9 @@ import re
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -51,6 +52,9 @@ def _include_champ_teleop(context, *args, **kwargs):
                 "use_joy": context.launch_configurations.get("use_joystick", "false"),
                 "joy_device_id": joy_id,
                 "use_xterm": context.launch_configurations.get("use_xterm", "true"),
+                "block_body_pose_until_running": context.launch_configurations.get(
+                    "block_body_pose_until_running", "true"
+                ),
             }.items(),
         )
     ]
@@ -65,8 +69,8 @@ def generate_launch_description():
 
     use_joystick_launch_arg = DeclareLaunchArgument(
         name="use_joystick",
-        default_value="false",
-        description="Enable joystick/gamepad control (default: false, keyboard only)",
+        default_value="true",
+        description="Enable joystick/gamepad control (default: true; 纯键盘请传 use_joystick:=false)",
     )
 
     joystick_dev_launch_arg = DeclareLaunchArgument(
@@ -81,12 +85,37 @@ def generate_launch_description():
         description="是否用 xterm 跑键盘遥控（桌面默认 true）；无 DISPLAY 时设 false 并配合 ssh -t 或改用 /cmd_vel",
     )
 
+    use_ps4_feedback = LaunchConfiguration("use_ps4_feedback")
+    use_ps4_feedback_launch_arg = DeclareLaunchArgument(
+        name="use_ps4_feedback",
+        default_value="true",
+        description="是否启动 PS4 手柄灯条/振动反馈（无手柄时节点只发调试话题，可设 false 关闭）",
+    )
+
+    block_body_pose_until_running_launch_arg = DeclareLaunchArgument(
+        name="block_body_pose_until_running",
+        default_value="true",
+        description="真机默认 true；仿真/台架无电源序列时设 false，允许手柄直接调 body_pose",
+    )
+
+    ps4_feedback_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution(
+                [FindPackageShare("trotbot_status_led"), "launch", "ps4_feedback.launch.py"]
+            )
+        ),
+        condition=IfCondition(use_ps4_feedback),
+    )
+
     return LaunchDescription(
         [
             use_sim_time_launch_arg,
             use_joystick_launch_arg,
             joystick_dev_launch_arg,
             use_xterm_launch_arg,
+            use_ps4_feedback_launch_arg,
+            block_body_pose_until_running_launch_arg,
             OpaqueFunction(function=_include_champ_teleop),
+            ps4_feedback_launch,
         ]
     )

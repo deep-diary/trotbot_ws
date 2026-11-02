@@ -97,6 +97,66 @@ ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true use_status_led:
 ros2 launch trotbot_status_led status_led.launch.py params_file:=/path/to/my_params.yaml
 ```
 
+## PS4 手柄灯条 / 振动反馈（`ds4_feedback_node`）
+
+除了 WS2812 灯带，本包还提供 **PS4（DualShock 4）灯条 + 振动** 反馈：`ds4_feedback_node` 直接读 `status_led_map.yaml` 的灯语，把狗子状态同步到手柄。可与 WS2812 节点**并行运行**，两者互不冲突。
+
+### 反馈内容
+
+| 来源 | 手柄表现 |
+|------|----------|
+| `/power_sequence/state` + `/power_sequence/gate_open` | 按 [`config/status_led_map.yaml`](config/status_led_map.yaml) 显示颜色（Idle 蓝、Running 绿、Precheck/SoftStand 橙、SoftProne 橙红、ProneHold 蓝、Fault 红等） |
+| 进入 Running（gate 开） | 绿灯 + 弱震 120 ms |
+| 进入 ProneHold | 蓝灯 + 弱震 120 ms |
+| 进入 Idle/Disable/SoftProne 且 gate 关 | 对应灯色 + 强震 500 ms（下电/失控能提示） |
+| `Fault` 或电机故障 | 红灯双闪 + 双强震（各 200 ms，间隔 350 ms） |
+| `/cmd_vel` 行走/静止 | Running 时行走高亮绿灯，静止压暗到 35%；起步弱震 80 ms（可关） |
+| `/diagnostics` 电机故障 | `trotbot_can_bridge:motor_feedback:*` 的 ERROR 或 `fault_mask != 0` → 红灯双闪 + 双震 |
+
+> 电机故障需要 `trotbot_can_bridge/config/control_gains.yaml` 中 `publish_motor_diagnostics: true`（本仓库默认已开）。
+
+### 依赖与权限
+
+- Python：`rclpy`、`std_msgs`、`geometry_msgs`、`diagnostic_msgs`、`ament_index_python`、`python3-yaml`。
+- 设备：自动扫描 `/dev/hidraw*`（DS4 VID `054C`，PID `05C4/09CC/0BA0`），USB/蓝牙均可；也可用 `hidraw_path` 指定。
+- 权限：当前用户需对 `/dev/hidraw*` 可读写（常见为 `dialout` 组或 udev 规则）。无权限/无手柄时节点只 WARN 一次并继续发布调试话题，不影响遥控。
+
+### 启动
+
+```bash
+# 单独启动
+ros2 launch trotbot_status_led ps4_feedback.launch.py
+
+# 随 teleop 一起（trotbot_teleop.launch.py 默认 use_ps4_feedback:=true）
+ros2 launch trotbot trotbot_teleop.launch.py use_joystick:=true use_ps4_feedback:=true
+
+# 整机（use_teleop:=true 时透传）
+ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true use_teleop:=true \
+  use_joystick:=true use_xterm:=false use_status_led:=true use_ps4_feedback:=true
+```
+
+关闭手柄反馈：传 `use_ps4_feedback:=false`，或 `ros2 param set /ds4_feedback_node ...` 后重启。
+
+### 调试话题
+
+`/trotbot/ps4/feedback`（`std_msgs/String`，JSON）变化即发，并每 1 s 心跳一次，字段：
+
+```json
+{"state":"Running","gate":true,"cmd_linear_x":0.1,"cmd_angular_z":0.0,"moving":true,
+ "class":"ready","rgb":[0,255,0],"color":"#00FF00","pattern":"solid",
+ "rumble_weak":0.0,"rumble_strong":0.0,"motor_fault":false,"map_match":true,"device":"hidraw2"}
+```
+
+无手柄时 `device` 为空，其余逻辑仍可验收：
+
+```bash
+ros2 topic pub --once /power_sequence/gate_open std_msgs/msg/Bool "{data: true}"
+ros2 topic pub --once /power_sequence/state std_msgs/msg/String "{data: Running}"
+ros2 topic echo /trotbot/ps4/feedback
+```
+
+参数文件：[`config/ps4_feedback_params.yaml`](config/ps4_feedback_params.yaml)（振动强度/时长、行走阈值与亮度、调试心跳周期等）。
+
 ## 降级语义
 
 - **GPIO 打开失败**或 **stub 构建**：节点保持运行，**不打断**运动栈；仅 WARN 一次，无灯带输出。

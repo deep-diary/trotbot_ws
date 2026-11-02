@@ -38,6 +38,8 @@ DATA_REPORT_OFF="0102030405060000"
 # 实测：设置零 data[0]=01；使能/失能全 0
 DATA_SET_ZERO="0100000000000000"
 DATA_EMPTY="0000000000000000"
+# 通信类型 22（保存参数）数据域固定 01..08；全 0 不会触发保存（a3/LL-019 实测）
+DATA_SAVE_PARAM="0102030405060708"
 
 # 前左腿 11–13 → can0；前右 21–23 → can0；后左 51–53 → can1；后右 61–63 → can1（与 dog_mapper / README 一致）
 IDS_CAN0=(11 12 13 21 22 23)
@@ -83,7 +85,7 @@ usage() {
   mit           12 电机发送一轮 MIT 运控帧（CMD=${CMD_CONTROL}，默认 p=0 v=0 kp=30 kd=1.5 tau=0）
   zero_sta_read 读取参数 0x${PARAM_ZERO_STA_HEX}（通信类型 ${CMD_GET_PARAM}，打印原始应答与解析值）
   zero_sta_set  写参数 0x${PARAM_ZERO_STA_HEX}（通信类型 ${CMD_SET_PARAM}，默认写入 ZERO_STA_TARGET=${ZERO_STA_TARGET}）
-  zero_sta_save 发送参数保存帧（通信类型 ${CMD_SAVE_PARAM}）
+  zero_sta_save 发送参数保存帧（通信类型 ${CMD_SAVE_PARAM}，data=${DATA_SAVE_PARAM}）
   zero_sta_apply 执行 zero_sta_set -> zero_sta_save -> zero_sta_read
   check         快速链路自检：逐个电机发 set_zero 并等待反馈帧（CMD=${CMD_FEEDBACK}）
   ping          仅打印本轮电机与接口映射（不发送）
@@ -553,9 +555,9 @@ cmd_zero_sta_set() {
 cmd_zero_sta_save() {
   require_cansend
   local id
-  echo "--- 保存参数 (CMD ${CMD_SAVE_PARAM}) ---"
+  echo "--- 保存参数 (CMD ${CMD_SAVE_PARAM}), data=${DATA_SAVE_PARAM} ---"
   for id in $(resolve_motor_ids); do
-    send_cmd "$CMD_SAVE_PARAM" "$id" "$DATA_EMPTY"
+    send_cmd "$CMD_SAVE_PARAM" "$id" "$DATA_SAVE_PARAM"
     sleep_ms "$SLEEP_MS"
   done
   echo "done."

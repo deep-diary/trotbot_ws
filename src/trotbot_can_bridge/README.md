@@ -43,11 +43,12 @@ sudo apt-get install -y can-utils
 - `L1 + R1` **或** **`□`（Square）** 长按：上电 / `start`（`Idle`→`Precheck…`；`ProneHold`→`SoftStand`），时长用 **`start_longpress_s`**
 - `L1 + R1 + Share` 长按：下电收拢（`SoftProne -> Disable -> Idle`，与话题 `shutdown` 同语义）
 - `Circle`（`○`）长按：趴下至 **`ProneHold`**（保持使能、门禁仍开），时长用 **`prone_longpress_s`**，与话题 **`prone`** 同语义
-- **`Options`**（索引 **`button_option`**，默认 9）长按 **`set_zero_longpress_s`**：**机械零位**（CMD 0x06），成功触发后默认 **`set_zero_repeat_count`**（如 3）轮完整 `SendSetZeroAll`，轮间隔 **`set_zero_repeat_interval_ms`**；仅 **`Idle`** 且门禁关；与 URDF `joint_offsets` 不同层；勿与脚本 **`zero`** 并发
+- **`Share + Options`** 长按 **`motor_init_longpress_s`**（默认 3 s）：**一次性电机初始化**——写 `zero_sta(0x7029)=1` → CMD 0x16 保存 flash → CMD 0x11 回读校验（12/12）。仅 **`Idle`** 且门禁关；不改机械零位；**写后需断电重启生效**
+- **`Options`**（索引 **`button_option`**，默认 9）**单独**长按 **`set_zero_longpress_s`**：**机械零位**（CMD 0x06），成功触发后默认 **`set_zero_repeat_count`**（如 3）轮完整 `SendSetZeroAll`，轮间隔 **`set_zero_repeat_interval_ms`**；仅 **`Idle`** 且门禁关；与 URDF `joint_offsets` 不同层；按住 Share 时不会触发；勿与脚本 **`zero`** 并发
 
 ### 无电机使能的安全抓包模式（推荐先联调）
 
-可以在启动时关闭“上电使能”与“初始化 MIT 零位帧”，这样可先验证状态机、话题和 CAN 报文链路，避免电机动作带来结构风险。
+可以在启动时关闭“上电使能”与“使能首帧保持”，这样可先验证状态机、话题和 CAN 报文链路，避免电机动作带来结构风险。
 
 ```bash
 ros2 launch trotbot trotbot_basic.launch.py \
@@ -65,7 +66,8 @@ ros2 launch trotbot trotbot_basic.launch.py \
 ```bash
 # 建议联调时先设为 false，确认逻辑后再打开
 send_enable_in_startup: false
-send_mit_zero_in_startup: false
+send_mit_hold_in_startup: false
+# 注意：require_feedback_before_enable 依赖 0x18 主动上报；关闭上报时 start 会因反馈不新鲜而中止
 ```
 
 ### 无遥控器触发启停（话题指令）
@@ -76,6 +78,7 @@ send_mit_zero_in_startup: false
 - `prone`：仅 **`Running`** → `SoftProne` → **`ProneHold`**（不发 Reset）
 - `shutdown`：`ProneHold` 直接 `Disable`；其余允许态先 `SoftProne` 再 `Disable`（见根 `README.md` 2a-1 表）
 - `set_zero`：十二电机机械零位（同上 gate）；非 Idle 拒绝
+- `motor_init`：一次性电机初始化（写 `zero_sta=1` → 保存 → 回读）；非 Idle/门禁开时拒绝
 
 示例：
 
@@ -84,6 +87,7 @@ ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'start
 ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'prone'}"
 ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'shutdown'}"
 ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'set_zero'}"
+ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'motor_init'}"
 ```
 
 状态观测：
@@ -142,12 +146,20 @@ bash install/trotbot_can_bridge/share/trotbot_can_bridge/scripts/el05_motor_cans
 - `zero_sta=0`：上电位置域 `0~2π`（负向小偏移可能被映射到接近 `2π`）
 - `zero_sta=1`：上电位置域 `-π~π`（更适合趴姿断电后的双向小偏移恢复）
 
-建议一次性执行：
+建议一次性执行（二选一）：
 
 ```bash
-# 全 12 电机：写 zero_sta=1，保存，再回读
+# A. 推荐：ROS 运行中按手柄 Share + Options 长按 3s（或话题 motor_init）
+#    写 0x7029=1 -> CMD 0x16 保存 -> CMD 0x11 回读校验；仅 Idle + 门禁关
+ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'motor_init'}"
+
+# B. 无 ROS 节点时用脚本（先停掉 ROS 节点，避免抢总线）
+#    全 12 电机：写 zero_sta=1，保存，再回读
 ZERO_STA_TARGET=1 bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh zero_sta_apply
 ```
+
+> 写后必须 **断电重启** 才生效；日常上电不再执行 `set_zero`，也不再发 MIT `p=0` 首帧（改为按当前反馈角保持）。
+> `power_sequence_node` 默认在 launch 后 `zero_sta_verify_delay_s` 秒对 12 路做一次 **只读** 回读自检，非 1 时打印 WARN 提醒重新初始化。
 
 也可以分步：
 

@@ -14,6 +14,13 @@
   <depend>ament_index_cpp</depend>
   <depend>yaml_cpp_vendor</depend>
 
+  <!-- PS4 灯条/振动反馈（Python） -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
   <!-- System: apt install libgpiod-dev (provides gpiod.h + libgpiod) -->
   <build_depend>libgpiod-dev</build_depend>
 
