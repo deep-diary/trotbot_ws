@@ -194,15 +194,15 @@ ros2 topic echo /power_sequence/gate_open --once
 | `prone` | 仅在 **`Running`**：`SoftProne` 过渡到趴姿目标后进入 **`ProneHold`**，**不发 Reset、保持使能与 gate** |
 | `shutdown` | **`ProneHold`**：直接进入 **`Disable`**（全机 `Reset` 后回 `Idle`）；其余 **`Idle` / `Precheck` / `EnableInit` / `SoftStand` / `Running` / `SoftProne`**：先 **`SoftProne`**，再 **`Disable`** |
 | `set_zero` | **维修后机械零位**：仅 **`Idle`** 且 **`gate_open=false`** 时对 12 电机发 EL05 **`set_zero`**（CMD 0x06）；非 Idle 拒绝（日志 WARN）。与 URDF `joint_offsets` 标定不同层 |
-| `motor_init` | **一次性电机初始化**：仅 **`Idle`** 且 **`gate_open=false`** 时写 `zero_sta(0x7029)=1` → CMD 0x16 保存 flash → CMD 0x11 回读校验（要求 12/12）。不改机械零位；**写后需断电重启生效** |
+| `motor_init` | **一次性电机标定初始化**：仅 **`Idle`** 且 **`gate_open=false`** 时执行 `set_zero`（当前姿态=机械零位）→ 写 `zero_sta(0x7029)=1` → CMD 0x16 保存 flash → CMD 0x11 回读校验（要求 12/12）。**必须在零位工装姿态下操作**；**写后需断电重启生效** |
 
-手柄等效：`L1+R1`（且**未**按 Share）或 **`□`（Square）** 长按 → 与 **`start`** 相同计时（`start_longpress_s`）；**`○`（Circle）** 长按 → 与 **`prone`** 相同计时（`prone_longpress_s`）；**`Share+Options`** 长按 **`motor_init_longpress_s`**（默认 3 s）→ 与 **`motor_init`** 相同。PS4 类布局下 `□` 默认 `button_square:=3`，若与你的 `sensor_msgs/Joy` 不符请改 `power_sequence.yaml`。
+手柄等效（短按 = 按下沿）：**`L3`** 短按 → **`start`** 上电/使能（唯一上电入口）；**`□`（Square）** 短按 → **stand** 站起（仅 `ProneHold` → `SoftStand`）；**`○`（Circle）** 短按 → **idle** 趴下（仅 `Running` → `SoftProne` → `ProneHold`，保持使能）；**`R3`** 短按 → 下电 `shutdown`（回 idle `SoftProne` 后 `Disable`；唯一下电入口，Running/ProneHold/启动过程均生效）；**`L1+R1`** 长按（未上电 `Idle`、门禁关）→ **`motor_init`**。PS4 布局默认 `button_l3:=11`、`button_r3:=12`、`button_square:=3`、`button_circle:=1`，若与 `sensor_msgs/Joy` 不符请改 `power_sequence.yaml`。
 
-**机械零位（RQ-024）**：仅在 **`Idle`、尚未 `start`** 时使用——PS4 **Options 单独**长按 **`set_zero_longpress_s`**（默认约 2 s，防误触；同时按住 Share 时走电机初始化，不会 set_zero），或上述话题 **`set_zero`**。按钮索引 **`button_option`**（默认 9）务必用 **`ros2 topic echo /joy`** 对照 Options 实测；设 **`button_option: -1`** 可关闭手柄、仅保留话题。勿与 **`el05_motor_explicit_cmds_12_direct.sh`** 等 **cansend** 脚本并发抢总线。
+**机械零位（RQ-024）**：唯一手柄入口是**未上电（`Idle` + 门禁关）时 `L1+R1` 长按** → **`motor_init`**（`set_zero` + `zero_sta=1` 即 -180°~180° + 保存 + 回读），**必须在零位工装姿态下操作**，**写后需断电重启生效**；`Options` / `Share+Options` 手柄入口已取消。无手柄时可用话题 **`set_zero`** / **`motor_init`**。勿与 **`el05_motor_explicit_cmds_12_direct.sh`** 等 **cansend** 脚本并发抢总线。
 
-**站立 `Running` 时再触发 `start`（话题或 □/L1+R1）**：话题会 **`ignore`**；手柄在 **`Running`** 分支**只处理**下电与 **`prone`**，**不会**执行 start，也**不会**先趴再起。
+**`Running` 时再触发 `start`（话题或 L3）**：话题会 **`ignore`**；手柄在 **`Running`** 分支**只处理** `idle` 趴下与 `R3` 下电，**不会**执行 start，也**不会**先趴再起。
 
-**关于 `SoftProne` / `SoftStand` 的高度**：默认 **`track_body_pose_height:=true`** 时，进入 **`SoftProne`（含下电路径）** 会以**最近一次有效的 `body_pose.position.z`（与本节点发布同源话题）** 为起点插值到 `prone_z`，避免遥控压低高度后仍先抬回 `stand_z` 再趴。仅 **`prone` 路径**在趴下前会记录 **`stand_resume_z`**，随后 **`start` 站起** 时 `SoftStand` 插值到该高度而非固定 `stand_z`，减轻「站回名义高度再突然下落」的跳变。冷启动 **`Idle`→`start`** 仍用 `stand_z` 作为站起目标。跟踪超时（`body_pose_stale_s`）或无样本时回退到本节点**上次发布的 z**，再回退 `stand_z`。参数见 `power_sequence.yaml`。
+**关于 `SoftProne` / `SoftStand` 的高度**：默认 **`track_body_pose_height:=true`** 时，进入 **`SoftProne`（含下电路径）** 会以**最近一次有效的 `body_pose.position.z`（与本节点发布同源话题）** 为起点插值到 `prone_z`，避免遥控压低高度后仍先抬回 `stand_z` 再趴。仅 **`prone` 路径**在趴下前会记录 **`stand_resume_z`**，随后话题 **`start` 站起** 时 `SoftStand` 插值到该高度而非固定 `stand_z`，减轻「站回名义高度再突然下落」的跳变。**`□` 短按站起**固定用 **`stand_z`**（名义站姿）；冷启动 **`Idle`→`L3`** 也用 `stand_z`。跟踪超时（`body_pose_stale_s`）或无样本时回退到本节点**上次发布的 z**，再回退 `stand_z`。参数见 `power_sequence.yaml`。
 
 **`ProneHold` 与 `start`（站起）**：`ProneHold` 持续发布 **`prone_z`**（相对 CHAMP 名义高度的 z 增量，**不是**机械结构上的「全局最低点」）。从 **`ProneHold` 发 `start`** 只会进入 **`SoftStand`**：在 **`stand_z`↔`prone_z`** 上从趴姿插值回站姿，**不会**先发失能、也不会再走一遍 `EnableInit` 的使能/MIT 保持帧（电机已在运行态）。若在 **`SoftProne`（趴下动画）尚未结束**时发 `start`，实现上会 **挂起**：动画结束后直接进入 **`SoftStand`**，避免第一次 `start` 被忽略、需连发两次的现象。
 
@@ -293,7 +293,7 @@ ros2 launch trotbot trotbot_basic.launch.py \
   use_status_led:=true
 ```
 
-**便捷控制脚本（后台运行，推荐）**：工作空间根目录的 `main.sh` 支持 `start / stop / restart / status`，**默认 `restart`**（先杀掉当前相关进程，再后台重启）。
+**便捷控制脚本（后台运行，推荐）**：工作空间根目录的 `main.sh` 是**统一入口**，支持 `start / stop / restart / status`（**默认 `restart`**）以及 `motor / calib / led-test`。
 
 ```bash
 cd ~/trotbot_ws
@@ -306,6 +306,18 @@ cd ~/trotbot_ws
 
 # 额外参数原样追加给 ros2 launch（后出现的同名参数覆盖默认值）
 ./main.sh restart use_status_led:=false
+
+# 电机维护（转发到 el05_motor_cansend.sh）
+./main.sh motor ping
+./main.sh motor zero_sta_read
+./main.sh motor --help
+
+# 一键标定：set_zero（当前姿态=机械零位）+ zero_sta=1 + 保存 flash
+./main.sh calib           # 交互确认
+./main.sh calib -y        # 跳过确认（仍要求 state=Idle、门禁关闭）
+
+# 单独测试 WS2812 灯带
+./main.sh led-test
 ```
 
 `--sim` 为无硬件台架模式：不启动 CAN 桥、电机、WS2812 和 PS4 反馈，启动 `quadruped_controller + champ_teleop + joy_node + RViz`，并设置 `block_body_pose_until_running:=false`，便于直接用左手柄查看步态和机体姿态（无物理接触/真实电机反馈）。
@@ -324,14 +336,7 @@ bash "$(ros2 pkg prefix trotbot)/share/trotbot/scripts/trotbot_ctl.sh" restart
 - `stop/restart` 会清理本脚本启动的进程组，并兜底结束残留的 `trotbot_basic`、`champ_teleop`、`joy_node`、`ds4_feedback_node`、`status_led_node`、`power_sequence_node` 等相关进程（**包括手动启动的**）。
 - 工作空间可用 `TROTBOT_WS` 指定。
 
-**整机重启（前台方式，备选）**：另开终端或结束当前 launch 后执行脚本——会先向运行中的 `ros2 launch trotbot trotbot_basic.launch.py` 发送 **SIGINT** 优雅退出，再以前台重新拉起（与工作空间路径、`TROTBOT_WS` 规则见脚本注释）。安装包后：
-
-```bash
-source ~/trotbot_ws/install/setup.bash   # 按实际路径
-bash "$(ros2 pkg prefix trotbot)/share/trotbot/scripts/restart_trotbot_basic.sh"
-```
-
-源码树内可直接：`bash src/trotbot/scripts/restart_trotbot_basic.sh`。若由 **systemd** 管理整机启动，请优先用下面「**改代码后：编译 + systemd 重启**」，不要在机器上双起第二套 launch。
+**`restart_trotbot_basic.sh`（已废弃，兼容保留）**：脚本仍在原路径并可执行，但只是转发到 `trotbot_ctl.sh restart`（改为后台运行、带 PID/日志）。新操作请统一用 `./main.sh restart`。若由 **systemd** 管理整机启动，请优先用下面「**改代码后：编译 + systemd 重启**」，不要在机器上双起第二套 launch。
 
 **改代码后：编译 + systemd 重启（板端 / 与 systemd 联调时推荐）**  
 `systemctl restart` 会按单元里的 `ExecStart` 重新跑一遍 `source install/setup.bash` 和 `ros2 launch …`，**前提是已把新代码编进 `install/`**。主栈包可只编到 `trotbot` 相关，避免工作区里 **minidog**（需 catkin）、**champ_gazebo**（需 Gazebo 依赖）等包导致全量 `colcon build` 失败：

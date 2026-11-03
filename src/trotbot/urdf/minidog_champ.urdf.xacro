@@ -7,6 +7,27 @@
   <xacro:arg name="model_g" default="0.75294"/>
   <xacro:arg name="model_b" default="0.75294"/>
   <xacro:arg name="model_a" default="1.0"/>
+  <!-- 分部件配色：默认回退到 model_*，传参即可分件着色 -->
+  <xacro:arg name="body_r" default="$(arg model_r)"/>
+  <xacro:arg name="body_g" default="$(arg model_g)"/>
+  <xacro:arg name="body_b" default="$(arg model_b)"/>
+  <xacro:arg name="body_a" default="$(arg model_a)"/>
+  <xacro:arg name="head_r" default="$(arg model_r)"/>
+  <xacro:arg name="head_g" default="$(arg model_g)"/>
+  <xacro:arg name="head_b" default="$(arg model_b)"/>
+  <xacro:arg name="head_a" default="$(arg model_a)"/>
+  <xacro:arg name="thigh_r" default="$(arg model_r)"/>
+  <xacro:arg name="thigh_g" default="$(arg model_g)"/>
+  <xacro:arg name="thigh_b" default="$(arg model_b)"/>
+  <xacro:arg name="thigh_a" default="$(arg model_a)"/>
+  <xacro:arg name="calf_r" default="$(arg model_r)"/>
+  <xacro:arg name="calf_g" default="$(arg model_g)"/>
+  <xacro:arg name="calf_b" default="$(arg model_b)"/>
+  <xacro:arg name="calf_a" default="$(arg model_a)"/>
+  <xacro:arg name="foot_r" default="$(arg model_r)"/>
+  <xacro:arg name="foot_g" default="$(arg model_g)"/>
+  <xacro:arg name="foot_b" default="$(arg model_b)"/>
+  <xacro:arg name="foot_a" default="$(arg model_a)"/>
   <xacro:property name="mesh_dir" value="file://$(find trotbot)/meshes/minidog"/>
   <xacro:property name="knee_y_merged" value="0.081"/>
 
@@ -19,10 +40,10 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="${mesh_dir}/base.STL"/>
+        <mesh filename="${mesh_dir}/base_body.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg body_r) $(arg body_g) $(arg body_b) $(arg body_a)"/>
       </material>
     </visual>
     <collision>
@@ -39,6 +60,29 @@
     </collision>
   </link>
 
+  <!-- 头部：base.STL 中头部几何已拆为 base_head.STL，独立链接便于单独着色 -->
+  <link name="head">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.01"/>
+      <inertia ixx="1e-06" ixy="0" ixz="0" iyy="1e-06" iyz="0" izz="1e-06"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="${mesh_dir}/base_head.STL"/>
+      </geometry>
+      <material name="">
+        <color rgba="$(arg head_r) $(arg head_g) $(arg head_b) $(arg head_a)"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="base_head" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="head"/>
+  </joint>
+
   <!-- Left front -->
   <link name="lf1">
     <inertial>
@@ -52,7 +96,7 @@
         <mesh filename="${mesh_dir}/lf_hip.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg body_r) $(arg body_g) $(arg body_b) $(arg body_a)"/>
       </material>
     </visual>
     <collision>
@@ -82,7 +126,7 @@
         <mesh filename="${mesh_dir}/lf_thigh.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg thigh_r) $(arg thigh_g) $(arg thigh_b) $(arg thigh_a)"/>
       </material>
     </visual>
     <collision>
@@ -113,7 +157,7 @@
         <mesh filename="${mesh_dir}/lf_calf.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg calf_r) $(arg calf_g) $(arg calf_b) $(arg calf_a)"/>
       </material>
     </visual>
     <collision>
@@ -143,7 +187,7 @@
         <mesh filename="${mesh_dir}/lf_foot.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg foot_r) $(arg foot_g) $(arg foot_b) $(arg foot_a)"/>
       </material>
     </visual>
     <collision>
@@ -172,7 +216,7 @@
         <mesh filename="${mesh_dir}/rf_hip.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg body_r) $(arg body_g) $(arg body_b) $(arg body_a)"/>
       </material>
     </visual>
     <collision>
@@ -202,7 +246,7 @@
         <mesh filename="${mesh_dir}/rf_thigh.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg thigh_r) $(arg thigh_g) $(arg thigh_b) $(arg thigh_a)"/>
       </material>
     </visual>
     <collision>
@@ -232,7 +276,7 @@
         <mesh filename="${mesh_dir}/rf_calf.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg calf_r) $(arg calf_g) $(arg calf_b) $(arg calf_a)"/>
       </material>
     </visual>
     <collision>
@@ -262,7 +306,7 @@
         <mesh filename="${mesh_dir}/rf_foot.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg foot_r) $(arg foot_g) $(arg foot_b) $(arg foot_a)"/>
       </material>
     </visual>
     <collision>
@@ -291,7 +335,7 @@
         <mesh filename="${mesh_dir}/lr_hip.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg body_r) $(arg body_g) $(arg body_b) $(arg body_a)"/>
       </material>
     </visual>
     <collision>
@@ -321,7 +365,7 @@
         <mesh filename="${mesh_dir}/lr_thigh.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg thigh_r) $(arg thigh_g) $(arg thigh_b) $(arg thigh_a)"/>
       </material>
     </visual>
     <collision>
@@ -351,7 +395,7 @@
         <mesh filename="${mesh_dir}/lr_calf.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg calf_r) $(arg calf_g) $(arg calf_b) $(arg calf_a)"/>
       </material>
     </visual>
     <collision>
@@ -381,7 +425,7 @@
         <mesh filename="${mesh_dir}/lr_foot.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg foot_r) $(arg foot_g) $(arg foot_b) $(arg foot_a)"/>
       </material>
     </visual>
     <collision>
@@ -410,7 +454,7 @@
         <mesh filename="${mesh_dir}/rr_hip.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg body_r) $(arg body_g) $(arg body_b) $(arg body_a)"/>
       </material>
     </visual>
     <collision>
@@ -440,7 +484,7 @@
         <mesh filename="${mesh_dir}/rr_thigh.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg thigh_r) $(arg thigh_g) $(arg thigh_b) $(arg thigh_a)"/>
       </material>
     </visual>
     <collision>
@@ -470,7 +514,7 @@
         <mesh filename="${mesh_dir}/rr_calf.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg calf_r) $(arg calf_g) $(arg calf_b) $(arg calf_a)"/>
       </material>
     </visual>
     <collision>
@@ -500,7 +544,7 @@
         <mesh filename="${mesh_dir}/rr_foot.STL"/>
       </geometry>
       <material name="">
-        <color rgba="$(arg model_r) $(arg model_g) $(arg model_b) $(arg model_a)"/>
+        <color rgba="$(arg foot_r) $(arg foot_g) $(arg foot_b) $(arg foot_a)"/>
       </material>
     </visual>
     <collision>

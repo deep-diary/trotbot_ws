@@ -80,15 +80,13 @@ public:
 
     stand_z_ = this->declare_parameter<double>("stand_z", 0.0);
     prone_z_ = this->declare_parameter<double>("prone_z", -0.35);
-    start_longpress_s_ = this->declare_parameter<double>("start_longpress_s", 1.0);
-    shutdown_longpress_s_ = this->declare_parameter<double>("shutdown_longpress_s", 1.0);
-    prone_longpress_s_ = this->declare_parameter<double>("prone_longpress_s", 0.8);
 
     button_l1_ = this->declare_parameter<int>("button_l1", 4);
     button_r1_ = this->declare_parameter<int>("button_r1", 5);
     button_share_ = this->declare_parameter<int>("button_share", 8);
     button_circle_ = this->declare_parameter<int>("button_circle", 1);
     button_square_ = this->declare_parameter<int>("button_square", 3);
+    button_l3_ = this->declare_parameter<int>("button_l3", 11);
 
     motor_master_id_ = this->declare_parameter<int>("motor_master_id", 253);
     init_kp_ = this->declare_parameter<double>("init_kp", 20.0);
@@ -107,16 +105,17 @@ public:
     active_report_boot_delay_s_ = this->declare_parameter<double>("active_report_boot_delay_s", 0.25);
 
     enable_remote_set_zero_ = this->declare_parameter<bool>("enable_remote_set_zero", true);
-    button_option_ = this->declare_parameter<int>("button_option", 9);
-    set_zero_longpress_s_ = this->declare_parameter<double>("set_zero_longpress_s", 2.0);
+    button_r3_ = this->declare_parameter<int>("button_r3", 12);
     set_zero_event_topic_ = this->declare_parameter<std::string>("set_zero_event_topic", "");
     set_zero_repeat_count_ = this->declare_parameter<int>("set_zero_repeat_count", 3);
     set_zero_repeat_interval_ms_ = this->declare_parameter<int>("set_zero_repeat_interval_ms", 40);
 
     enable_remote_motor_init_ = this->declare_parameter<bool>("enable_remote_motor_init", true);
     motor_init_longpress_s_ = this->declare_parameter<double>("motor_init_longpress_s", 3.0);
+    motor_init_do_set_zero_ = this->declare_parameter<bool>("motor_init_do_set_zero", true);
     motor_init_zero_sta_ = this->declare_parameter<int>("motor_init_zero_sta", 1);
     motor_init_tick_ms_ = this->declare_parameter<int>("motor_init_tick_ms", 50);
+    motor_init_set_zero_wait_ms_ = this->declare_parameter<int>("motor_init_set_zero_wait_ms", 400);
     motor_init_set_wait_ms_ = this->declare_parameter<int>("motor_init_set_wait_ms", 200);
     motor_init_save_wait_ms_ = this->declare_parameter<int>("motor_init_save_wait_ms", 500);
     motor_init_read_wait_ms_ = this->declare_parameter<int>("motor_init_read_wait_ms", 600);
@@ -192,8 +191,8 @@ public:
   }
 
 private:
-  /// 一次性电机初始化（只在 Idle + 门禁关时执行）：写 zero_sta → 保存 flash → 回读校验
-  enum class MotorInitPhase { Idle, SetZeroSta, SaveParams, ReadBack };
+  /// 一次性电机初始化（只在 Idle + 门禁关时执行）：set_zero → 写 zero_sta → 保存 flash → 回读校验
+  enum class MotorInitPhase { Idle, SetZero, SetZeroSta, SaveParams, ReadBack };
 
   static constexpr uint8_t kCmdEnable = 0x03;
   static constexpr uint8_t kCmdReset = 0x04;
@@ -343,21 +342,26 @@ private:
     TickMotorInit();
 
     const bool share = ButtonOn(button_share_);
-    const bool option_pressed = (button_option_ >= 0) && ButtonOn(button_option_);
+    const bool l1 = ButtonOn(button_l1_);
+    const bool r1 = ButtonOn(button_r1_);
+    const bool circle = (button_circle_ >= 0) && ButtonOn(button_circle_);
+    const bool square = (button_square_ >= 0) && ButtonOn(button_square_);
+    const bool l3 = (button_l3_ >= 0) && ButtonOn(button_l3_);
+    const bool r3 = (button_r3_ >= 0) && ButtonOn(button_r3_);
 
-    // RQ-024：PS4 Options 单独长按 → 12 路机械 set_zero；与 Share+Options 初始化组合键互斥
-    const bool option_btn = option_pressed && !share && enable_remote_set_zero_;
-    option_hold_s_ = option_btn ? (option_hold_s_ + dt) : 0.0;
-    if (!option_btn) {
-      option_action_done_this_hold_ = false;
-    }
-    if (option_btn && option_hold_s_ >= set_zero_longpress_s_ && !option_action_done_this_hold_) {
-      (void)TryRemoteSetZero("joy");
-      option_action_done_this_hold_ = true;
-    }
+    // 短按 = 按下沿；先更新 prev，避免后续早退丢失边沿
+    const bool l3_edge = l3 && !l3_prev_;
+    const bool square_edge = square && !square_prev_;
+    const bool circle_edge = circle && !circle_prev_;
+    const bool r3_edge = r3 && !r3_prev_;
+    l3_prev_ = l3;
+    square_prev_ = square;
+    circle_prev_ = circle;
+    r3_prev_ = r3;
 
-    // 一次性电机初始化：Share + Options 长按（写 zero_sta=1 并保存到电机 flash）
-    const bool init_combo = option_pressed && share;
+    // 设零唯一入口：未上电（Idle + 门禁关）时 L1+R1 长按 → set_zero + zero_sta=1 + 保存 + 回读
+    const bool init_combo =
+      l1 && r1 && !share && state_ == SequenceState::Idle && !gate_open_;
     init_hold_s_ = init_combo ? (init_hold_s_ + dt) : 0.0;
     if (!init_combo) {
       init_latch_ = false;
@@ -372,63 +376,37 @@ private:
       return;
     }
 
-    const bool l1 = ButtonOn(button_l1_);
-    const bool r1 = ButtonOn(button_r1_);
-    const bool circle = ButtonOn(button_circle_);
-    const bool square = (button_square_ >= 0) && ButtonOn(button_square_);
-
-    // □ 长按与 L1+R1（且非 Share）共用 start_longpress_s，等价话题 start
-    const bool start_combo = (l1 && r1 && !share) || square;
-    const bool shutdown_combo = l1 && r1 && share;
-    const bool prone_combo = circle;
-
-    start_hold_s_ = start_combo ? (start_hold_s_ + dt) : 0.0;
-    shutdown_hold_s_ = shutdown_combo ? (shutdown_hold_s_ + dt) : 0.0;
-    prone_hold_s_ = prone_combo ? (prone_hold_s_ + dt) : 0.0;
-
-    if (!start_combo) {
-      start_latch_ = false;
-    }
-    if (!shutdown_combo) {
-      shutdown_latch_ = false;
-    }
-    if (!prone_combo) {
-      prone_latch_ = false;
-    }
-
     if (state_ == SequenceState::Idle) {
-      if (!start_latch_ && start_hold_s_ >= start_longpress_s_) {
-        start_latch_ = true;
+      // 上电唯一入口：L3 短按 → Precheck → EnableInit → SoftStand → Running
+      if (l3_edge) {
+        RCLCPP_WARN(this->get_logger(), "joy L3 short press: power on / enable");
         use_stand_resume_for_softstand_ = false;
         EnterState(SequenceState::Precheck);
-        return;
-      }
-      if (!shutdown_latch_ && shutdown_hold_s_ >= shutdown_longpress_s_) {
-        shutdown_latch_ = true;
-        BeginSoftProne(true);
         return;
       }
       return;
     }
 
     if (state_ == SequenceState::Running) {
-      if (!shutdown_latch_ && shutdown_hold_s_ >= shutdown_longpress_s_) {
-        shutdown_latch_ = true;
-        BeginSoftProne(true);
-      } else if (!prone_latch_ && prone_hold_s_ >= prone_longpress_s_) {
-        prone_latch_ = true;
+      if (circle_edge) {
+        RCLCPP_WARN(this->get_logger(), "joy Circle short press: go to idle (SoftProne)");
         BeginSoftProne(false);
+      } else if (r3_edge) {
+        RCLCPP_WARN(
+          this->get_logger(), "joy R3 short press: safe-park (SoftProne) then disable");
+        BeginSoftProne(true);
       }
       return;
     }
 
     if (state_ == SequenceState::ProneHold) {
-      if (!shutdown_latch_ && shutdown_hold_s_ >= shutdown_longpress_s_) {
-        shutdown_latch_ = true;
-        EnterState(SequenceState::Disable);
-      } else if (!start_latch_ && start_hold_s_ >= start_longpress_s_) {
-        start_latch_ = true;
+      if (square_edge) {
+        RCLCPP_WARN(this->get_logger(), "joy Square short press: stand up (SoftStand)");
+        use_stand_resume_for_softstand_ = false;
         EnterState(SequenceState::SoftStand);
+      } else if (r3_edge) {
+        RCLCPP_WARN(this->get_logger(), "joy R3 short press: disable from ProneHold");
+        EnterState(SequenceState::Disable);
       }
       TickState(dt);
       return;
@@ -438,20 +416,12 @@ private:
       state_ == SequenceState::SoftStand || state_ == SequenceState::EnableInit ||
       state_ == SequenceState::Precheck)
     {
-      if (!shutdown_latch_ && shutdown_hold_s_ >= shutdown_longpress_s_) {
-        shutdown_latch_ = true;
+      // R3 在启动过程中同样可中止：SoftProne -> Disable（与话题 shutdown 一致）
+      if (r3_edge) {
+        RCLCPP_WARN(
+          this->get_logger(), "joy R3 short press: abort startup (SoftProne) then disable");
         BeginSoftProne(true);
         return;
-      }
-    }
-
-    if (state_ == SequenceState::SoftProne && !soft_prone_then_disable_) {
-      if (!start_latch_ && start_hold_s_ >= start_longpress_s_) {
-        start_latch_ = true;
-        pending_start_after_prone_ = true;
-        RCLCPP_INFO(
-          this->get_logger(),
-          "joy start latched during SoftProne(prone path): will enter SoftStand when prone motion completes");
       }
     }
 
@@ -874,12 +844,22 @@ private:
     motor_init_verify_only_ = verify_only;
     motor_init_active_ = true;
     motor_init_phase_armed_ = false;
+    motor_init_set_zero_round_ = 0;
+    motor_init_read_round_ = 0;
     motor_init_phase_time_ = this->now();
+    motor_init_last_round_time_ = motor_init_phase_time_;
     if (verify_only) {
       motor_init_phase_ = MotorInitPhase::ReadBack;
       RCLCPP_INFO(
         this->get_logger(), "zero_sta self-check (%s): read-only probe of 0x%04X",
         trigger, ProtocolCodec::kParamZeroSta);
+    } else if (motor_init_do_set_zero_) {
+      motor_init_phase_ = MotorInitPhase::SetZero;
+      RCLCPP_WARN(
+        this->get_logger(),
+        "motor_init start (%s): set_zero -> zero_sta(0x%04X)=%d -> save -> verify (12 motors); "
+        "current pose becomes mechanical zero, effective only after power cycle",
+        trigger, ProtocolCodec::kParamZeroSta, motor_init_zero_sta_);
     } else {
       motor_init_phase_ = MotorInitPhase::SetZeroSta;
       RCLCPP_WARN(
@@ -900,6 +880,36 @@ private:
     const uint8_t master = static_cast<uint8_t>(motor_master_id_);
 
     switch (motor_init_phase_) {
+      case MotorInitPhase::SetZero: {
+          const int rounds = std::clamp(set_zero_repeat_count_, 1, 10);
+          if (!motor_init_phase_armed_) {
+            SendSetZeroAll();
+            motor_init_set_zero_round_ = 1;
+            motor_init_last_round_time_ = this->now();
+            motor_init_phase_armed_ = true;
+            RCLCPP_WARN(
+              this->get_logger(), "motor_init: set_zero round 1/%d (current pose = mechanical zero)",
+              rounds);
+          } else if (motor_init_set_zero_round_ < static_cast<uint32_t>(rounds)) {
+            const auto now = this->now();
+            const double since_round_ms = (now - motor_init_last_round_time_).seconds() * 1000.0;
+            if (since_round_ms >= static_cast<double>(std::max(0, set_zero_repeat_interval_ms_))) {
+              SendSetZeroAll();
+              ++motor_init_set_zero_round_;
+              motor_init_last_round_time_ = now;
+              RCLCPP_WARN(
+                this->get_logger(), "motor_init: set_zero round %u/%d",
+                static_cast<unsigned>(motor_init_set_zero_round_), rounds);
+            }
+          }
+          if (
+            motor_init_set_zero_round_ >= static_cast<uint32_t>(rounds) &&
+            elapsed_ms >= static_cast<double>(motor_init_set_zero_wait_ms_))
+          {
+            EnterMotorInitPhase(MotorInitPhase::SetZeroSta);
+          }
+        }
+        break;
       case MotorInitPhase::SetZeroSta:
         if (!motor_init_phase_armed_) {
           for (const auto & route : DogMapper::kTemporaryIndexMap) {
@@ -930,16 +940,22 @@ private:
           EnterMotorInitPhase(MotorInitPhase::ReadBack);
         }
         break;
-      case MotorInitPhase::ReadBack:
-        if (!motor_init_phase_armed_) {
-          for (const auto & route : DogMapper::kTemporaryIndexMap) {
-            tx_pub_->publish(FrameCodec::Pack(ProtocolCodec::BuildGetParamFrame(
-              route.bus, route.motor_id, ProtocolCodec::kParamZeroSta, master)));
+      case MotorInitPhase::ReadBack: {
+          // 读参数应答可能因总线忙/上报冲突丢帧：窗口内每 150ms 重发一次 GET，最多 3~4 轮
+          const auto now = this->now();
+          const double since_read_ms = (now - motor_init_last_round_time_).seconds() * 1000.0;
+          if (!motor_init_phase_armed_ || since_read_ms >= 150.0) {
+            for (const auto & route : DogMapper::kTemporaryIndexMap) {
+              tx_pub_->publish(FrameCodec::Pack(ProtocolCodec::BuildGetParamFrame(
+                route.bus, route.motor_id, ProtocolCodec::kParamZeroSta, master)));
+            }
+            motor_init_phase_armed_ = true;
+            motor_init_last_round_time_ = now;
+            ++motor_init_read_round_;
           }
-          motor_init_phase_armed_ = true;
-        }
-        if (elapsed_ms >= static_cast<double>(motor_init_read_wait_ms_)) {
-          FinishMotorInit();
+          if (elapsed_ms >= static_cast<double>(motor_init_read_wait_ms_)) {
+            FinishMotorInit();
+          }
         }
         break;
       case MotorInitPhase::Idle:
@@ -982,19 +998,39 @@ private:
             << ":missing=" << missing.str();
         RCLCPP_WARN(
           this->get_logger(),
-          "%s — 未完成一次性电机初始化，请 Share+Options 长按 %.1fs（写后需断电重启生效）",
+          "%s — 未完成一次性电机初始化，请 L1+R1 长按 %.1fs（写后需断电重启生效）",
           oss.str().c_str(), motor_init_longpress_s_);
       }
-    } else if (ok == total) {
-      oss << "motor_init_ok:zero_sta=" << motor_init_zero_sta_ << ":" << ok << "/" << total;
-      RCLCPP_WARN(
-        this->get_logger(), "%s — 已保存到电机 flash；请断电重启后生效", oss.str().c_str());
     } else {
-      oss << "motor_init_fail:zero_sta=" << motor_init_zero_sta_ << ":ok=" << ok << "/" << total
-          << ":missing=" << missing.str();
-      RCLCPP_ERROR(
-        this->get_logger(),
-        "%s — 参数可能已写入但回读不全，请检查总线/固件或用脚本复查", oss.str().c_str());
+      const std::string zero_tag = motor_init_do_set_zero_ ? ":set_zero=1" : ":set_zero=0";
+      if (motor_init_do_set_zero_) {
+        const int64_t now_ns = this->now().nanoseconds();
+        const int64_t fresh_ns = static_cast<int64_t>(motor_feedback_fresh_timeout_s_ * 1e9);
+        double max_abs = 0.0;
+        size_t fresh_count = 0;
+        for (const auto & route : DogMapper::kTemporaryIndexMap) {
+          const int64_t stamp = last_feedback_stamp_ns_[route.motor_id];
+          if (stamp > 0 && (now_ns - stamp) <= fresh_ns) {
+            max_abs = std::max(max_abs, std::fabs(last_feedback_angle_rad_[route.motor_id]));
+            ++fresh_count;
+          }
+        }
+        RCLCPP_INFO(
+          this->get_logger(),
+          "motor_init: post set_zero fresh feedback=%zu/%d, |motor angle| max=%.4f rad (0 ≈ 已回零)",
+          fresh_count, total, max_abs);
+      }
+      if (ok == total) {
+        oss << "motor_init_ok:zero_sta=" << motor_init_zero_sta_ << zero_tag << ":" << ok << "/" << total;
+        RCLCPP_WARN(
+          this->get_logger(), "%s — 已保存到电机 flash；请断电重启后生效", oss.str().c_str());
+      } else {
+        oss << "motor_init_fail:zero_sta=" << motor_init_zero_sta_ << zero_tag << ":ok=" << ok << "/"
+            << total << ":missing=" << missing.str();
+        RCLCPP_ERROR(
+          this->get_logger(),
+          "%s — 参数可能已写入但回读不全，请检查总线/固件或用脚本复查", oss.str().c_str());
+      }
     }
     PublishMotorInitEvent(oss.str());
 
@@ -1047,15 +1083,14 @@ private:
   double prone_duration_s_{2.5};
   double stand_z_{0.0};
   double prone_z_{-0.35};
-  double start_longpress_s_{1.0};
-  double shutdown_longpress_s_{1.0};
-  double prone_longpress_s_{0.8};
 
   int button_l1_{4};
   int button_r1_{5};
   int button_share_{8};
   int button_circle_{1};
   int button_square_{3};
+  int button_l3_{11};
+  int button_r3_{12};
 
   int motor_master_id_{253};
   double init_kp_{20.0};
@@ -1073,18 +1108,20 @@ private:
   double active_report_boot_delay_s_{0.25};
 
   bool enable_remote_set_zero_{true};
-  int button_option_{9};
-  double set_zero_longpress_s_{2.0};
   std::string set_zero_event_topic_;
   int set_zero_repeat_count_{3};
   int set_zero_repeat_interval_ms_{40};
-  double option_hold_s_{0.0};
-  bool option_action_done_this_hold_{false};
+  bool l3_prev_{false};
+  bool square_prev_{false};
+  bool circle_prev_{false};
+  bool r3_prev_{false};
 
   bool enable_remote_motor_init_{true};
   double motor_init_longpress_s_{3.0};
+  bool motor_init_do_set_zero_{true};
   int motor_init_zero_sta_{1};
   int motor_init_tick_ms_{50};
+  int motor_init_set_zero_wait_ms_{400};
   int motor_init_set_wait_ms_{200};
   int motor_init_save_wait_ms_{500};
   int motor_init_read_wait_ms_{600};
@@ -1095,6 +1132,9 @@ private:
   bool motor_init_active_{false};
   bool motor_init_verify_only_{false};
   bool motor_init_phase_armed_{false};
+  uint32_t motor_init_set_zero_round_{0};
+  uint32_t motor_init_read_round_{0};
+  rclcpp::Time motor_init_last_round_time_;
   rclcpp::Time motor_init_phase_time_;
   std::array<int, 64> motor_init_readback_{};
   std::array<bool, 64> motor_init_has_readback_{};
@@ -1127,13 +1167,6 @@ private:
   bool gate_open_{false};
   bool init_sent_{false};
   bool disable_sent_{false};
-
-  double start_hold_s_{0.0};
-  double shutdown_hold_s_{0.0};
-  double prone_hold_s_{0.0};
-  bool start_latch_{false};
-  bool shutdown_latch_{false};
-  bool prone_latch_{false};
 
   rclcpp::Publisher<UInt8MultiArray>::SharedPtr tx_pub_;
   rclcpp::Publisher<Pose>::SharedPtr pose_pub_;

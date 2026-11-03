@@ -40,11 +40,12 @@ sudo apt-get install -y can-utils
 
 默认按键（`power_sequence.yaml` 可改）：
 
-- `L1 + R1` **或** **`□`（Square）** 长按：上电 / `start`（`Idle`→`Precheck…`；`ProneHold`→`SoftStand`），时长用 **`start_longpress_s`**
-- `L1 + R1 + Share` 长按：下电收拢（`SoftProne -> Disable -> Idle`，与话题 `shutdown` 同语义）
-- `Circle`（`○`）长按：趴下至 **`ProneHold`**（保持使能、门禁仍开），时长用 **`prone_longpress_s`**，与话题 **`prone`** 同语义
-- **`Share + Options`** 长按 **`motor_init_longpress_s`**（默认 3 s）：**一次性电机初始化**——写 `zero_sta(0x7029)=1` → CMD 0x16 保存 flash → CMD 0x11 回读校验（12/12）。仅 **`Idle`** 且门禁关；不改机械零位；**写后需断电重启生效**
-- **`Options`**（索引 **`button_option`**，默认 9）**单独**长按 **`set_zero_longpress_s`**：**机械零位**（CMD 0x06），成功触发后默认 **`set_zero_repeat_count`**（如 3）轮完整 `SendSetZeroAll`，轮间隔 **`set_zero_repeat_interval_ms`**；仅 **`Idle`** 且门禁关；与 URDF `joint_offsets` 不同层；按住 Share 时不会触发；勿与脚本 **`zero`** 并发
+- **`L3`**（左摇杆按下，索引 **`button_l3`**，默认 11）**短按**：上电/使能 **`start`**（`Idle`→`Precheck`→`EnableInit`→`SoftStand`→`Running`），**唯一上电入口**
+- **`□`（Square）** **短按**：站起 **stand**（仅 `ProneHold`→`SoftStand`；`Running` 已是站姿，无动作）
+- **`○`（Circle）** **短按**：**idle** 趴下（仅 `Running`→`SoftProne`→`ProneHold`，保持使能），与话题 `prone` 同语义
+- **`R3`**（右摇杆按下，索引 **`button_r3`**，默认 12）**短按**：下电 `shutdown`（回 idle `SoftProne` 后 `Disable`）；`Running` / `ProneHold` / 启动过程（`Precheck`/`EnableInit`/`SoftStand`）均生效，**唯一下电入口**
+- **`L1 + R1`** 长按（未按 Share）**`motor_init_longpress_s`**（默认 3 s）：**唯一设零入口**，仅未上电 **`Idle`** 且门禁关时生效——`set_zero`（当前姿态=机械零位）→ 写 `zero_sta(0x7029)=1`（即 -180°~180°）→ CMD 0x16 保存 flash → CMD 0x11 回读校验（12/12）。**必须在零位工装姿态（底部垫高、机身水平）下操作**；**写后需断电重启生效**。只想改断电位置域、不动零位时设 `motor_init_do_set_zero: false`
+- `Options` / `Share + Options` 手柄入口**已取消**；无手柄时仍可用话题 `/power_sequence/command` 的 `set_zero` / `motor_init`（仅 `Idle` 且门禁关；勿与脚本 **`zero`** 并发）
 
 ### 无电机使能的安全抓包模式（推荐先联调）
 
@@ -100,6 +101,11 @@ ros2 topic echo /power_sequence/gate_open
 ### 用法
 
 ```bash
+# 推荐：统一入口（工作空间根目录）
+./main.sh motor --help
+./main.sh motor zero
+./main.sh motor zero_sta_read
+
 # 源码目录直接跑
 bash src/trotbot_can_bridge/scripts/el05_motor_cansend.sh --help
 
@@ -149,8 +155,9 @@ bash install/trotbot_can_bridge/share/trotbot_can_bridge/scripts/el05_motor_cans
 建议一次性执行（二选一）：
 
 ```bash
-# A. 推荐：ROS 运行中按手柄 Share + Options 长按 3s（或话题 motor_init）
-#    写 0x7029=1 -> CMD 0x16 保存 -> CMD 0x11 回读校验；仅 Idle + 门禁关
+# A. 推荐：未上电时按手柄 L1 + R1 长按 3s（或话题 motor_init）
+#    先 set_zero（当前姿态=机械零位）-> 写 0x7029=1 -> CMD 0x16 保存 -> CMD 0x11 回读校验
+#    仅 Idle + 门禁关；必须在零位工装姿态下操作
 ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: 'motor_init'}"
 
 # B. 无 ROS 节点时用脚本（先停掉 ROS 节点，避免抢总线）

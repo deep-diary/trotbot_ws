@@ -14,18 +14,18 @@
 | 下标 | 物理键 | 本项目中典型用途（见 §3 / §4） |
 |:----:|--------|----------------------------------|
 | 0 | ✕（Cross） | `champ_teleop`：默认 **降低** 机体高度（`joy_height_dec_button`） |
-| 1 | ○（Circle） | `power_sequence`：长按 **趴下** → `ProneHold`（`button_circle`） |
+| 1 | ○（Circle） | `power_sequence`：**短按** **idle 趴下** → `ProneHold`（`button_circle`） |
 | 2 | △（Triangle） | `champ_teleop`：默认 **升高** 机体高度（`joy_height_inc_button`） |
-| 3 | □（Square） | `power_sequence`：长按 **start**（等同上电流程，`button_square`） |
-| 4 | L1 | `champ_teleop`：肩键模式切换；`power_sequence`：与 R1 组合 **start / shutdown** |
+| 3 | □（Square） | `power_sequence`：**短按** **stand 站起**（仅 `ProneHold` → `SoftStand`，`button_square`） |
+| 4 | L1 | `champ_teleop`：肩键模式切换；`power_sequence`：与 R1 长按 **motor_init**（设零）/ 加 Share **shutdown** |
 | 5 | R1 | 同上 |
 | 6 | L2（部分驱动为**数字键**） | 依驱动可能为 0/1 或走 `axes` 模拟量 |
 | 7 | R2（部分驱动为**数字键**） | 同上 |
-| 8 | SHARE | `power_sequence`：与 L1+R1 同时按 → **下电** 组合（`button_share`） |
-| 9 | OPTIONS | `power_sequence`：长按 **机械 set_zero**（`button_option`，RQ-024） |
+| 8 | SHARE | `power_sequence`：与 L1+R1 同时长按 → **下电** 组合（`button_share`） |
+| 9 | OPTIONS | 本仓库流程**未绑** |
 | 10 | PS 键 | 本仓库流程**未绑**；部分系统会抢焦点 |
-| 11 | L3（左摇杆按下） | 本仓库**未绑**（`champ_teleop` 未用） |
-| 12 | R3（右摇杆按下） | 本仓库**未绑** |
+| 11 | L3（左摇杆按下） | `power_sequence`：**短按** 上电/使能 `start`（唯一上电入口，`button_l3`） |
+| 12 | R3（右摇杆按下） | `power_sequence`：**短按** → 回 idle（`SoftProne`）后失能（`Disable`），`button_r3` |
 
 ### 1.2 `axes[]`（截图中的轴编号与极值）
 
@@ -100,19 +100,20 @@ flowchart LR
 
 | 物理键（PS4） | 参数名 | 默认下标 | 功能 |
 |---------------|--------|:--------:|------|
-| L1 + R1，且**未**按 Share | `button_l1` / `button_r1` / `button_share` | 4 / 5 / 8 | 长按 ≈ 话题 **`start`**（上电/站立流程） |
-| □ | `button_square` | 3 | 长按 ≈ **`start`**（与上项二选一） |
-| L1 + R1 + **Share** | 同上 | 4+5+8 | 长按 ≈ **`shutdown`**（下电） |
-| ○ | `button_circle` | 1 | 长按 ≈ **`prone`**（趴下至 ProneHold） |
-| **OPTIONS** | `button_option` | 9 | 长按 ≈ 十二电机 **机械 set_zero**（**仅 Idle 且门禁关**，RQ-024） |
+| **L3** | `button_l3` | 11 | **短按** ≈ **`start`** 上电/使能（唯一上电入口） |
+| □ | `button_square` | 3 | **短按** ≈ **stand 站起**（仅 `ProneHold` → `SoftStand`） |
+| ○ | `button_circle` | 1 | **短按** ≈ **idle** 趴下（`Running` → `SoftProne` → `ProneHold`） |
+| **R3** | `button_r3` | 12 | **短按** ≈ 回 idle（`SoftProne`）后失能（`Disable`）；仅 Running/ProneHold 生效 |
+| **L1 + R1**，且**未**按 Share | `button_l1` / `button_r1` / `button_share` | 4 / 5 / 8 | 长按 ≈ 十二电机 **`motor_init`**（set_zero + zero_sta=1 即 -180°~180° + 保存 + 回读；**唯一设零入口，仅未上电 Idle 且门禁关**） |
+| L1 + R1 + **Share** | `button_share` | 4+5+8 | 长按 ≈ **`shutdown`**（下电） |
 
-等效**话题**（无手柄时）：`/power_sequence/command` 字符串 **`start` / `prone` / `shutdown` / `set_zero`**（大小写不敏感）。
+等效**话题**（无手柄时）：`/power_sequence/command` 字符串 **`start` / `prone` / `shutdown` / `set_zero` / `motor_init`**（大小写不敏感）。`Options` / `Share+Options` 手柄入口已取消。
 
 ---
 
 ## 5. 标定与排障建议
 
-1. **首次接线**：`ros2 topic echo /joy`，逐个按下 **□○△✕、肩键、Share、Options**，记录 **`buttons[i]`** 是否为 1。  
+1. **首次接线**：`ros2 topic echo /joy`，逐个按下 **□○△✕、肩键、Share、Options、L3、R3**，记录 **`buttons[i]`** 是否为 1。  
 2. **与默认不符**：只改 YAML / `ros2 param set`，不要改物理键帽。  
 3. **`power_sequence` 与脚本并发**：执行 **`el05_motor_cansend.sh`** / **`el05_motor_explicit_cmds_12_direct.sh`** 时不要在手柄上触发 **start / set_zero**，避免抢 CAN。
 
@@ -142,5 +143,5 @@ flowchart LR
 |------|------|
 | [`../image/PS4 按键分布.png`](../image/PS4%20按键分布.png) | 手柄示意图与红圈下标 |
 | [`src/champ_teleop/docs/PS4_JOY_MAPPING_zh.md`](../../src/champ_teleop/docs/PS4_JOY_MAPPING_zh.md) | `champ_teleop` 详细映射与参数 |
-| [`src/trotbot_can_bridge/config/power_sequence.yaml`](../../src/trotbot_can_bridge/config/power_sequence.yaml) | 启停与 Option **set_zero** 数值参数 |
+| [`src/trotbot_can_bridge/config/power_sequence.yaml`](../../src/trotbot_can_bridge/config/power_sequence.yaml) | 启停、**motor_init**（L1+R1）与 **R3** 失能参数 |
 | 根目录 [`README.md`](../../README.md) §2a-1 | `power_sequence` 话题语义表 |

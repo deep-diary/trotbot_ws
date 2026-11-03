@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# TrotBot 整机便捷控制脚本（后台运行）
+# TrotBot 整机便捷控制脚本（统一入口的实现在此）
 #
 # 用法:
 #   ./trotbot_ctl.sh                 # 默认真机 restart：先停当前相关进程，再后台重启
 #   ./trotbot_ctl.sh --sim           # 无硬件台架仿真 restart
 #   ./trotbot_ctl.sh start|stop|restart|status
+#   ./trotbot_ctl.sh motor <子命令>   # 转发到 el05_motor_cansend.sh（zero/init/zero_sta_* 等）
+#   ./trotbot_ctl.sh calib [-y]       # 一键标定：set_zero + zero_sta=1 + 保存
+#   ./trotbot_ctl.sh led-test         # 单独测试 WS2812 灯带
 #
 # 额外参数会原样追加给 ros2 launch，例如：
 #   ./trotbot_ctl.sh restart use_status_led:=false
@@ -19,13 +22,19 @@ set -u
 
 CMD=""
 SIM=0
+ASSUME_YES=0
 EXTRA_ARGS=()
-for arg in "$@"; do
-  case "${arg}" in
-    --sim|sim) SIM=1 ;;
-    start|stop|restart|status) CMD="${arg}" ;;
-    -h|--help|help) CMD="help" ;;
-    *) EXTRA_ARGS+=("${arg}") ;;
+PASSTHRU=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --sim|sim) SIM=1; shift ;;
+    start|stop|restart|status) CMD="$1"; shift ;;
+    motor) CMD="motor"; shift; PASSTHRU=("$@"); break ;;
+    calib|calibrate) CMD="calib"; shift ;;
+    led-test|led_test) CMD="led-test"; shift ;;
+    -y|--yes) ASSUME_YES=1; shift ;;
+    -h|--help|help) CMD="help"; shift ;;
+    *) EXTRA_ARGS+=("$1"); shift ;;
   esac
 done
 CMD="${CMD:-restart}"
@@ -132,19 +141,32 @@ PATTERNS=(
 
 usage() {
   cat <<'EOF'
-用法: trotbot_ctl.sh [--sim] [start|stop|restart|status] [额外 ros2 launch 参数...]
+用法: trotbot_ctl.sh [--sim] <命令> [参数...]
 
-  --sim    无硬件台架仿真：不启动 CAN/电机/WS2812/PS4 反馈，启动控制器 + 手柄 + RViz
-  start    后台启动（默认真机：CAN + teleop + 手柄 + 灯带）
-  stop     停止整机栈及相关节点
-  restart  先停再启（默认命令）
-  status   查看运行状态
+  --sim            无硬件台架仿真：不启动 CAN/电机/WS2812/PS4 反馈，启动控制器 + 手柄 + RViz
+  start            后台启动（默认真机：CAN + teleop + 手柄 + 灯带）
+  stop             停止整机栈及相关节点
+  restart          先停再启（默认命令）
+  status           查看运行状态
+
+  motor <子命令>  转发到 el05_motor_cansend.sh，例如：
+                     ./main.sh motor ping
+                     ./main.sh motor zero
+                     ./main.sh motor init
+                     ./main.sh motor zero_sta_read
+                     ./main.sh motor zero_sta_apply
+                     ./main.sh motor --help
+  calib [-y]       一键标定：set_zero（当前姿态=机械零位）+ zero_sta=1 + 保存 flash
+                   需整机栈已运行、状态 Idle、门禁关闭；完成后断电重启生效
+  led-test         单独测试 WS2812 灯带
 
 示例:
   ./main.sh                 # 默认真机 restart
   ./main.sh --sim           # 仿真台架 restart
   ./main.sh start --sim     # 仿真台架 start
   ./main.sh restart use_status_led:=false
+  ./main.sh calib           # 交互确认后执行一键标定
+  ./main.sh motor zero_sta_read
 
 日志: <workspace>/log/trotbot_ctl/stack.log
 EOF
@@ -291,6 +313,71 @@ status_stack() {
   fi
 }
 
+# ---- 子脚本定位与转发 ----
+resolve_pkg_script() {
+  local pkg="$1" rel="$2" prefix
+  prefix="$(ros2 pkg prefix "${pkg}" 2>/dev/null || true)"
+  if [[ -n "${prefix}" && -f "${prefix}/share/${pkg}/${rel}" ]]; then
+    echo "${prefix}/share/${pkg}/${rel}"
+    return 0
+  fi
+  if [[ -f "${WS}/src/${pkg}/${rel}" ]]; then
+    echo "${WS}/src/${pkg}/${rel}"
+    return 0
+  fi
+  return 1
+}
+
+run_motor() {
+  local script
+  if ! script="$(resolve_pkg_script trotbot_can_bridge scripts/el05_motor_cansend.sh)"; then
+    echo "ERROR: 找不到 el05_motor_cansend.sh（请先 colcon build）" >&2
+    exit 1
+  fi
+  if [[ ${#PASSTHRU[@]} -eq 0 ]]; then
+    exec bash "${script}" --help
+  fi
+  exec bash "${script}" "${PASSTHRU[@]}"
+}
+
+run_calib() {
+  if ! ros2 node list 2>/dev/null | grep -qx '/power_sequence_node'; then
+    echo "ERROR: /power_sequence_node 未运行，请先 ./main.sh start" >&2
+    exit 1
+  fi
+  echo "=============================================================="
+  echo " 即将执行一键标定："
+  echo "   1) set_zero：把【当前姿态】定义为机械零位（3 轮）"
+  echo "   2) zero_sta(0x7029)=1：断电后按 -180°~180° 重建"
+  echo "   3) 保存到电机 flash，并回读校验"
+  echo " 前提：狗子已摆好零位姿态（底部垫高、机身水平），状态 Idle、门禁关闭。"
+  echo " 标定后必须【整机断电重启】才生效。"
+  echo "=============================================================="
+  if [[ "${ASSUME_YES}" -ne 1 ]]; then
+    if [[ ! -t 0 ]]; then
+      echo "ERROR: 非交互终端，确认无误请加 -y：./main.sh calib -y" >&2
+      exit 1
+    fi
+    local ans
+    read -r -p "确认执行？输入 yes 继续: " ans
+    if [[ "${ans}" != "yes" ]]; then
+      echo "已取消。"
+      exit 1
+    fi
+  fi
+  ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: motor_init}"
+  echo "已下发 motor_init；请查看 power_sequence_node 日志确认 12/12，随后断电重启。"
+}
+
+run_led_test() {
+  local script
+  if ! script="$(resolve_pkg_script trotbot_status_led scripts/test_status_led_manual.sh)"; then
+    echo "ERROR: 找不到 test_status_led_manual.sh（请先 colcon build）" >&2
+    exit 1
+  fi
+  exec bash "${script}"
+}
+
 case "${CMD}" in
   start)
     start_stack
@@ -305,6 +392,15 @@ case "${CMD}" in
     ;;
   status)
     status_stack
+    ;;
+  motor)
+    run_motor
+    ;;
+  calib)
+    run_calib
+    ;;
+  led-test)
+    run_led_test
     ;;
   -h|--help|help)
     usage

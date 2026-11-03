@@ -12,20 +12,25 @@
     can_tx_frames_qos_depth: 4000
     motor_master_id: 253
 
-    # 默认按键（PS4/Linux 常见：□=3 ○=1）：L1+R1 或 □长按 上电/start；L1+R1+Share 下电；○长按 prone（保持使能）
-    # Share + Options 长按：一次性电机初始化（写 zero_sta=1 并保存，断电重启后生效）
-    # button_square: -1 可关闭「□ = start」
+    # 默认按键（PS4/Linux evdev：□=3 ○=1 L3=11 R3=12），短按均为按下沿：
+    #   L3 短按                          -> 上电/使能 start（唯一上电入口）
+    #   □ 短按                           -> 站起 stand（仅 ProneHold → SoftStand）
+    #   ○ 短按                           -> idle 趴下（仅 Running → SoftProne → ProneHold，保持使能）
+    #   R3 短按                          -> 下电 shutdown：回 idle（SoftProne）再失能（Disable）；
+    #                                       Running/ProneHold/启动过程均生效，是唯一下电入口
+    #   L1+R1 长按（未按 Share）         -> 设零 motor_init：set_zero + zero_sta=1（-180°~180°）+ 保存 + 回读；
+    #                                       唯一设零入口，仅未上电 Idle 且门禁关时生效
+    # 各按键 -1 可关闭对应手柄触发
     button_l1: 4
     button_r1: 5
     button_share: 8
     button_circle: 1
     button_square: 3
-    start_longpress_s: 1.0
-    shutdown_longpress_s: 1.0
-    prone_longpress_s: 0.8
+    button_l3: 11
+    button_r3: 12
 
     # 趴下/下电 SoftProne：起点 z 默认跟踪 /body_pose（与 teleop 同语义：相对 nominal_height 的增量），避免“先抬回 stand_z 再趴”
-    # 站起 SoftStand（从 ProneHold 或趴下动画末尾挂起 start）：目标 z 使用趴下前记录的 stand_resume_z（非仅 stand_z）
+    # 站起 SoftStand（□ 短按或话题 start）：目标 z = stand_z（名义站姿 0.2m 对应的高度增量）
     track_body_pose_height: true
     body_pose_stale_s: 2.0
     track_z_clamp_min: -0.5
@@ -43,26 +48,27 @@
     prone_z: -0.2
 
     # RQ-024：维修后机械零位（与 URDF joint_offsets 标定不同层）。仅 Idle、门禁关、未使能流程时允许。
-    # 注意：Options 单独长按才触发 set_zero；同时按住 Share 时走「一次性电机初始化」，不会 set_zero。
+    # 手柄入口统一走 L1+R1 长按的 motor_init（设零 + zero_sta=1 同一事件）；本开关仅保留话题 set_zero 手动入口。
     enable_remote_set_zero: true
-    # PS4 Options：内核 joy 下标因驱动而异，务必 ros2 topic echo /joy 实测后填写；-1 关闭手柄触发（仍可用 /power_sequence/command set_zero）
-    button_option: 9
-    # Options 长按生效秒数（防误触）
-    set_zero_longpress_s: 2.0
     # 非空则发布 set_zero_ok / set_zero_rejected:... 事件，便于联调或上层记录
     set_zero_event_topic: ""
     # 遥控/话题 set_zero 成功后：完整 12 电机 set_zero 帧重复次数（提高可靠性）；轮与轮之间间隔毫秒（略大于 el05 脚本 SLEEP_MS 思路）
     set_zero_repeat_count: 3
     set_zero_repeat_interval_ms: 40
 
-    # --- 一次性电机初始化（Share + Options 长按 3s）---
-    # 只配置断电位置域 zero_sta(0x7029)=1（上电按 -π~π 重建，即 ±180°），不改机械零位。
-    # 流程：写 0x7029 -> CMD 0x16 保存 flash -> CMD 0x11 回读校验；写后需断电重启才生效。
+    # --- 一次性电机标定初始化（L1+R1 长按 3s，未上电唯一设零入口）---
+    # 流程：set_zero（当前姿态=机械零位，3 轮）-> 写 zero_sta(0x7029)=1（上电按 -π~π 重建，即 -180°~180°）
+    #       -> CMD 0x16 保存 flash -> CMD 0x11 回读校验；写后需断电重启才生效。
+    # ！！会把当前姿态定义为机械零位：必须在零位工装姿态（底部垫高、机身水平）下操作。
     # 仅 Idle 且门禁关闭时允许；初始化期间屏蔽 start/shutdown/prone。
     enable_remote_motor_init: true
     motor_init_longpress_s: 3.0
+    # true=先 set_zero 再写 zero_sta；只想改断电位置域、不动机械零位时设为 false
+    motor_init_do_set_zero: true
     motor_init_zero_sta: 1
     motor_init_tick_ms: 50
+    # set_zero 后等待时间（毫秒），随后才写 zero_sta
+    motor_init_set_zero_wait_ms: 400
     motor_init_set_wait_ms: 200
     motor_init_save_wait_ms: 500
     motor_init_read_wait_ms: 600

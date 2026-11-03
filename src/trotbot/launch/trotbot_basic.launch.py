@@ -168,6 +168,7 @@ def generate_launch_description():
     )
 
     # 反馈模型：订阅 /joint_states_feedback，发布带前缀 fb/ 的 TF，便于 RViz 与期望模型并行对比
+    # 单模型默认使用不透明分件配色：机身/髋石墨灰、头亮灰白、大腿钢蓝、小腿深蓝、足端近黑
     robot_state_publisher_feedback_node = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
@@ -178,7 +179,12 @@ def generate_launch_description():
                 "robot_description": ParameterValue(
                     Command([
                         "xacro ", description_path,
-                        " model_r:=0.28 model_g:=0.72 model_b:=0.88 model_a:=0.55"
+                        " model_r:=0.28 model_g:=0.31 model_b:=0.35 model_a:=1.0"
+                        " body_r:=0.28 body_g:=0.31 body_b:=0.35 body_a:=1.0"
+                        " head_r:=0.86 head_g:=0.88 head_b:=0.90 head_a:=1.0"
+                        " thigh_r:=0.15 thigh_g:=0.45 thigh_b:=0.78 thigh_a:=1.0"
+                        " calf_r:=0.10 calf_g:=0.26 calf_b:=0.45 calf_a:=1.0"
+                        " foot_r:=0.06 foot_g:=0.06 foot_b:=0.07 foot_a:=1.0"
                     ]),
                     value_type=str,
                 ),

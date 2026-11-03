@@ -14,7 +14,7 @@
 
 ## 实机联调快速索引
 
-- **上电 / 趴下 / 下电**：`power_sequence_node` + `motor_protocol_node` 门禁；手柄 **`L1+R1` 或 `□` 长按** ≈ `start`，**`○` 长按** ≈ `prone`，**`L1+R1+Share`** ≈ `shutdown`；详见根目录 **`README.md`** 2a-1 与 **`src/trotbot_can_bridge/config/power_sequence.yaml`**。
+- **上电 / 站起 / 趴下 / 下电**：`power_sequence_node` + `motor_protocol_node` 门禁；手柄 **`L3` 短按** ≈ `start`（唯一上电），**`□` 短按** ≈ 站起 stand，**`○` 短按** ≈ idle 趴下，**`R3` 短按** ≈ `shutdown`（唯一下电入口），**未上电时 `L1+R1` 长按** ≈ `motor_init`（设零）；详见根目录 **`README.md`** 2a-1 与 **`src/trotbot_can_bridge/config/power_sequence.yaml`**。
 - **高度跟踪**：`SoftProne`/`SoftStand` 可跟踪 `body_pose.position.z` 与趴下前 **`stand_resume_z`**（参数 `track_body_pose_height` 等）。
 - **反馈可视化**：`/joint_states_feedback` + `robot_state_publisher_feedback`（`frame_prefix:=fb/`）；`motor_protocol` 侧 **`feedback_joint_states_timer_hz`** 保证无 CAN 时仍可有 TF 刷新。
 - **构建范围**：真机至少 `trotbot` + `trotbot_can_bridge` + `champ` 栈；详见包内 **`本地运行指南.md`** 第 4～5 节。

@@ -7,6 +7,9 @@
 #   ./main.sh --sim           # 无硬件台架仿真 restart（不启动 CAN/灯带/PS4 反馈，带 RViz）
 #   ./main.sh start|stop|restart|status
 #   ./main.sh restart use_status_led:=false
+#   ./main.sh motor <子命令>   # 转发到 el05_motor_cansend.sh（zero/init/zero_sta_* 等）
+#   ./main.sh calib [-y]       # 一键标定：set_zero + zero_sta=1 + 保存
+#   ./main.sh led-test         # 单独测试 WS2812 灯带
 set -u
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
