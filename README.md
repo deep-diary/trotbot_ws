@@ -322,7 +322,7 @@ cd ~/trotbot_ws
 
 `--sim` 为无硬件台架模式：不启动 CAN 桥、电机、WS2812 和 PS4 反馈，启动 `quadruped_controller + champ_teleop + joy_node + RViz`，并设置 `block_body_pose_until_running:=false`，便于直接用左手柄查看步态和机体姿态（无物理接触/真实电机反馈）。
 
-> 仿真模式不启动 `power_sequence_node`，因此 **□（start）/ ○（prone）不会响应**；摇杆步态、△/✕ 高度、右摇杆姿态可用。△/✕ 高度增量限制为 `body_z_max=+0.015 m`、`body_z_min=-0.08 m`。
+> 仿真模式不启动 `power_sequence_node`，因此 **L3（上电）/ □（站起）/ ○（趴下）/ R3（下电）均不会响应**；摇杆步态、△/✕ 高度、右摇杆姿态可用。△/✕ 高度增量限制为 `body_z_max=+0.015 m`、`body_z_min=-0.08 m`。
 
 `main.sh` 只是转发到 `src/trotbot/scripts/trotbot_ctl.sh`；也可直接调用后者，或安装后调用：
 
@@ -448,25 +448,58 @@ ros2 launch trotbot trotbot_teleop.launch.py use_joystick:=false use_xterm:=fals
 
 **若 `/joy` 有数据、RViz/真机却像不响应手柄**：旧版 `champ_teleop` 主线程一直卡在键盘读键、**没有 `spin`**，导致 **`joy_callback` 从不执行**；本工作空间内已改为 **后台 `SingleThreadedExecutor` 处理 `/joy`**。更新后请 **`colcon build --packages-select champ_teleop`** 并 **`source install/setup.bash`** 再启动。若仍无响应，再按下一节核对 PS4 轴/键编号是否与脚本一致。
 
-#### 4.4 手柄映射说明（`champ_teleop` 源码约定）
+#### 4.4 电源 / 设零按键（`power_sequence_node`，最新）
 
-以下为 `champ_teleop` 里 **`joy_callback`** 使用的 **轴/键索引**（偏 Xbox 类布局）。不同品牌（含 PS4）在 Linux 下 **`sensor_msgs/Joy` 里下标可能不一致**，若方向或功能不对，用 **`ros2 topic echo /joy`** 对照按键编号后再改 `src/champ_teleop/champ_teleop.py` 或做一层 remap。
+下表为 `src/trotbot_can_bridge/config/power_sequence.yaml` 默认值（PS4/CUH-ZCT2E 实测：`✕=0 ○=1 △=2 □=3 L1=4 R1=5 L3=11 R3=12`）。短按指**按下沿**，各键设 `-1` 可关闭。
 
-| 作用 | 假定索引 |
-|------|----------|
-| 前后移动 `cmd_vel.linear.x` | `axes[1]` |
-| 左右（平移/自旋取决于侧键） | `axes[0]`，与 `buttons[4]` 组合 |
-| 体态 roll / pitch / yaw、`body_pose` | `axes[3]`、`axes[4]`，以及 `buttons[5]` 切换 roll 与 yaw |
-| 机身高度微调 `body_pose.position.z`（推杆低于死区） | `axes[5] < 0` 时 `axes[5] * 0.5` |
+| 物理键 | `buttons` 下标 | 生效状态 | 动作 |
+|---|---|---|---|
+| **L3 短按** | 11 | `Idle` | 上电/使能 `start` → `Precheck → EnableInit → SoftStand → Running`（**唯一上电入口**） |
+| **□ 短按** | 3 | `ProneHold` | 站起 `SoftStand`（目标 `stand_z`） |
+| **○ 短按** | 1 | `Running` | 趴下 `SoftProne → ProneHold`，**保持使能** |
+| **R3 短按** | 12 | `Running` / `ProneHold` / 启动过程 | **唯一下电入口**：`Running`/启动过程先 `SoftProne` 再 `Disable`；`ProneHold` 直接 `Disable` |
+| **L1+R1 长按 3s** | 4+5（且未按 Share） | `Idle` 且门禁关 | **唯一设零入口** `motor_init`：`set_zero` + `zero_sta=1`（-180°~180°）+ 保存 flash + 回读 12/12。**必须在零位工装姿态下操作，写后断电重启生效** |
 
-键盘 **`t` / `b`** 与手柄 **「高度」通道**语义一致（见 `champ_teleop` 帮助文案），在同一 `champ_teleop` 进程内生效。
+- 其余状态按 R3、或 `Idle` 按 R3/□/○ 均忽略，避免误动作。
+- 无手柄时等效话题：`/power_sequence/command`（`start` / `prone` / `shutdown` / `set_zero` / `motor_init`）。
+- `champ_teleop` 自身不处理这些键；`Share`、`Options`、十字键当前未绑定。
 
-### 5) 观察链路（可选）
+#### 4.5 行走 / 姿态映射（`champ_teleop` 源码约定）
+
+以下为 `champ_teleop` 里 **`joy_callback`** 使用的 **轴/键索引**。不同品牌（含 PS4）在 Linux 下 **`sensor_msgs/Joy` 下标可能不一致**，若方向或功能不对，用 **`ros2 topic echo /joy`** 对照后再改 `src/champ_teleop/champ_teleop.py` 或做一层 remap；PS4 细表见 [`src/champ_teleop/docs/PS4_JOY_MAPPING_zh.md`](src/champ_teleop/docs/PS4_JOY_MAPPING_zh.md)。
+
+| 作用 | 索引 |
+|------|------|
+| 前后移动 `cmd_vel.linear.x` | `axes[1]`（左摇杆前后） |
+| 左摇杆左右：按住 `buttons[4]`（L1）→ 横向平移 `linear.y`；不按 → 原地转向 `angular.z` | `axes[0]` |
+| 右摇杆左右：按住 `buttons[5]`（R1）→ `yaw`；不按 → `roll` | `axes[3]` |
+| 右摇杆前后 → `pitch` | `axes[4]` |
+| 升高 / 降低 `body_pose.position.z`（步进 `keyboard_body_z_step=0.004 m`） | **△ `buttons[2]` / ✕ `buttons[0]`** |
+| R2 连续压低（仅 `axes[5] < 0`，增益 `joy_height_axis5_scale=0.5`） | `axes[5]` |
+
+高度增量限制：`body_z_max=+0.015 m`、`body_z_min=-0.08 m`（相对 `nominal_height=0.2 m`）。键盘 **`t` / `b`** 与手柄高度通道语义一致，在同一 `champ_teleop` 进程内生效。
+
+### 5) 查看 12 个电机的角度（反馈话题）
+
+**推荐话题：`/joint_states_feedback`**（`sensor_msgs/msg/JointState`，由 `motor_protocol_node` 按 `feedback_joint_states_timer_hz`（默认 50Hz）定时发布）。`position` 为 12 个关节角，单位 **rad**，顺序为 CHAMP：
+`base_lf1, lf1_lf2, lf2_lf3, base_rf1, rf1_rf2, rf2_rf3, base_lb1, lb1_lb2, lb2_lb3, base_rb1, rb1_rb2, rb2_rb3`。
 
 ```bash
-ros2 topic echo /can_tx_frames
-ros2 topic echo /motor_feedback
+ros2 topic echo /joint_states_feedback --once
+ros2 topic echo /joint_states_feedback --field position   # 只看 12 个角度
+ros2 topic hz /joint_states_feedback                      # 默认约 50Hz
 ```
+
+- 前提：`motor_protocol_node` 在运行，且参数 `publish_feedback_joint_states` 为 `true`（默认）。上电前也能出数，依赖主动上报 `0x18`（`enable_active_report_at_launch: true`）。
+- 尚未收到某关节反馈时该位会填 `0.0`（源码对非有限值兜底），不要把 `0` 当成真实角度。
+- 想看**单电机**原始反馈（ID、角度、速度、力矩、温度、错误码），用 `/motor_feedback`（`std_msgs/msg/String`，逐帧一行）：
+
+```bash
+ros2 topic echo /motor_feedback
+# 例：bus=1 motor=53 mode=1 angle=0.123 speed=-0.045 torque=0.210 temp=36 err=0
+```
+
+`/can_tx_frames`、`/can_rx_frames` 是 15 字节打包帧，只适合排查链路，不便于读角度。
 
 ## ROS2 架构与消息说明（MIT-only 双节点 CAN 桥接）
 
