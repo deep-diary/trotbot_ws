@@ -53,11 +53,20 @@ ament_target_dependencies(power_sequence_node
   std_msgs
 )
 
+add_executable(motor_monitor_node
+  src/motor_monitor_node.cpp
+)
+ament_target_dependencies(motor_monitor_node
+  rclcpp
+  std_msgs
+)
+
 install(TARGETS
   socketcan_driver
   can_transport_node
   motor_protocol_node
   power_sequence_node
+  motor_monitor_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}

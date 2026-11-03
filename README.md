@@ -501,6 +501,41 @@ ros2 topic echo /motor_feedback
 
 `/can_tx_frames`、`/can_rx_frames` 是 15 字节打包帧，只适合排查链路，不便于读角度。
 
+**力矩监控节点**：`motor_monitor_node` 订阅 `/motor_feedback`，按 12 关节顺序打印实时位置/力矩，并记录**本次订阅以来每个关节的最大力矩**（按绝对值取峰值、显示带符号值）。
+
+```bash
+# output_mode: torque（默认）| position | both
+ros2 run trotbot_can_bridge motor_monitor_node --ros-args \
+  -p output_mode:=torque \
+  -p print_hz:=1.0 \
+  -p show_max_torque:=true
+```
+
+- 每个关节一行：`idx  joint  motor  position(rad)  torque(Nm)  peak|tau|(Nm)`；未收到反馈显示 `n/a`。
+- 依赖 `/motor_feedback`，即 `motor_protocol_node` 的 `enable_rx_decode_log` 需为 `true`（默认）。
+- 该节点只打印，不发布话题；峰值从节点启动开始累计，重启节点即清零。
+
+**查看 CAN 报文**
+
+```bash
+# 1) 总线原始报文（需 can-utils；-t 时间戳，-z 毫秒）
+candump -tz can0          # 前腿
+candump -tz can1          # 后腿
+candump -tz can0 can1     # 两路同时
+
+# 2) ROS 侧 15 字节打包帧（UInt8MultiArray，十进制数组，可读性一般）
+ros2 topic echo /can_tx_frames     # MIT 下发
+ros2 topic echo /can_rx_frames     # 电机反馈 / 主动上报
+
+# 3) 单行十六进制（可读性最好；需 bridge.yaml 中 publish_hex_lines: true）
+ros2 topic echo /can_frames_tx_line
+ros2 topic echo /can_frames_rx_line
+# 例：TX can1 EXT id=0x017FFF0D len=08 75 4B 7F FF 0F 5C 4C CC
+```
+
+- `publish_hex_lines` 默认关闭，修改 `src/trotbot_can_bridge/config/bridge.yaml` 后重启 `can_transport_node` 生效（字段说明见 §4.5）。
+- 主动上报帧为扩展帧、ID 形如 `0x18xxxxxx`；MIT 下发帧高字节为 `0x01`（如 `0x017FFF0D`，中间字节为力矩编码），电机应答反馈为 `0x02...`。直接用 `candump` 看时以实际打印为准。
+
 ## ROS2 架构与消息说明（MIT-only 双节点 CAN 桥接）
 
 当前主链路采用两个节点解耦：
