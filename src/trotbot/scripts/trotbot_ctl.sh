@@ -7,6 +7,7 @@
 #   ./trotbot_ctl.sh start|stop|restart|status
 #   ./trotbot_ctl.sh motor <子命令>   # 转发到 el05_motor_cansend.sh（zero/init/zero_sta_* 等）
 #   ./trotbot_ctl.sh calib [-y]       # 一键标定：set_zero + zero_sta=1 + 保存
+#   ./trotbot_ctl.sh check            # 检查 CAN 桥节点与 12 个电机是否都在线（读 /motor_feedback）
 #   ./trotbot_ctl.sh led-test         # 单独测试 WS2812 灯带
 #
 # 额外参数会原样追加给 ros2 launch，例如：
@@ -31,6 +32,7 @@ while [[ $# -gt 0 ]]; do
     start|stop|restart|status) CMD="$1"; shift ;;
     motor) CMD="motor"; shift; PASSTHRU=("$@"); break ;;
     calib|calibrate) CMD="calib"; shift ;;
+    check|health) CMD="check"; shift ;;
     led-test|led_test) CMD="led-test"; shift ;;
     -y|--yes) ASSUME_YES=1; shift ;;
     -h|--help|help) CMD="help"; shift ;;
@@ -144,10 +146,11 @@ usage() {
 用法: trotbot_ctl.sh [--sim] <命令> [参数...]
 
   --sim            无硬件台架仿真：不启动 CAN/电机/WS2812/PS4 反馈，启动控制器 + 手柄 + RViz
-  start            后台启动（默认真机：CAN + teleop + 手柄 + 灯带）
+  start            后台启动（默认真机：CAN + teleop + 手柄 + 灯带），并自检电机在线
   stop             停止整机栈及相关节点
   restart          先停再启（默认命令）
   status           查看运行状态
+  check            检查 CAN 桥节点与 12 个电机是否都在线（读 /motor_feedback）
 
   motor <子命令>  转发到 el05_motor_cansend.sh，例如：
                      ./main.sh motor ping
@@ -244,6 +247,56 @@ stop_stack() {
   echo "== 已停止 =="
 }
 
+# 期望在线的 12 个电机 ID（can0: 11/12/13/21/22/23，can1: 51/52/53/61/62/63）
+EXPECTED_MOTORS=(11 12 13 21 22 23 51 52 53 61 62 63)
+
+# 启动自检：CAN 桥节点是否在跑、/joint_states_feedback 是否有发布者、
+# /motor_feedback 里 12 个电机是否都在上报（有上报帧 = 电机在线）。
+check_health() {
+  local nodes missing_nodes=() n ids total mid
+  local missing_motors=()
+  local waited=0
+
+  # 启动后立即调用时节点可能还在初始化，最多等 12s
+  while (( waited < 12 )); do
+    if ros2 node list 2>/dev/null | grep -qx '/motor_protocol_node'; then
+      break
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  nodes="$(ros2 node list 2>/dev/null || true)"
+  for n in can_transport_node motor_protocol_node power_sequence_node; do
+    grep -qx "/${n}" <<< "${nodes}" || missing_nodes+=("${n}")
+  done
+
+  echo "== 启动自检 =="
+  if [[ ${#missing_nodes[@]} -gt 0 ]]; then
+    echo "  节点缺失: ${missing_nodes[*]}"
+  else
+    echo "  CAN 桥节点: can_transport / motor_protocol / power_sequence 均在线"
+  fi
+
+  local pub
+  pub="$(ros2 topic info /joint_states_feedback 2>/dev/null | awk '/Publisher count:/{print $3}')"
+  echo "  /joint_states_feedback 发布者: ${pub:-0}"
+
+  ids="$(timeout 3 ros2 topic echo /motor_feedback 2>/dev/null \
+    | grep -o 'motor=[0-9]*' | sed 's/motor=//' | sort -n -u || true)"
+  total="$(printf '%s\n' "${ids}" | awk 'NF{n++} END{print n+0}')"
+  for mid in "${EXPECTED_MOTORS[@]}"; do
+    grep -qx "${mid}" <<< "${ids}" || missing_motors+=("${mid}")
+  done
+
+  if [[ ${#missing_motors[@]} -eq 0 ]]; then
+    echo "  电机在线: 12/12 (${EXPECTED_MOTORS[*]})"
+    return 0
+  fi
+  echo "  电机在线: ${total}/12，未上报: ${missing_motors[*]}"
+  return 1
+}
+
 start_stack() {
   local pid
   if [[ -f "${PID_FILE}" ]]; then
@@ -288,6 +341,13 @@ start_stack() {
   echo "   日志: ${LOG_FILE}"
   echo "   停止: $0 stop"
   echo "   重启: $0 restart"
+
+  if [[ "${MODE}" == "real" ]]; then
+    if ! check_health; then
+      echo "WARN: 启动自检未通过，请查看 ${LOG_FILE} 与 CAN 接线/供电。"
+      return 1
+    fi
+  fi
 }
 
 status_stack() {
@@ -398,6 +458,13 @@ case "${CMD}" in
     ;;
   calib)
     run_calib
+    ;;
+  check)
+    if [[ "${SIM}" -eq 1 ]]; then
+      echo "ERROR: --sim 模式无 CAN/电机，无法检查电机在线状态" >&2
+      exit 2
+    fi
+    check_health
     ;;
   led-test)
     run_led_test

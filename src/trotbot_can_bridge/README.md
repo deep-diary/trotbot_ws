@@ -458,6 +458,31 @@ ros2 param set /motor_protocol_node pinocchio_tau_ff_mode replace
 3. 符号确认后按 `0.2 → 0.35 → 0.5` 提升，对比站立/慢走的 `MIT tracking abs_err(rad)` 均值与最大值；
 4. 运行中结束 `pinocchio_tau_ff_node`，确认日志出现 `model tau_ff stale/invalid, fallback ...` 且力矩回到查表/总线偏置。
 
+**自我标定脚本（换腿负载/加壳后重标）：**
+
+```bash
+# 方式 A：悬空、人工扳腿（控制器保持运行；静态点可能含手撑力，谨慎使用）
+ros2 run trotbot_dynamics calibrate_gravity.py record --csv /tmp/gravity.csv
+
+# 方式 B（推荐）：悬空、临时停掉 quadruped_controller_node，自动逐关节扫掠
+#   先确认：脚离地、线缆无挂扯；电机保持使能（power_sequence 仍为 Running）
+pkill -f quadruped_controller_node
+ros2 run trotbot_dynamics calibrate_gravity.py sweep --csv /tmp/gravity.csv --yes
+
+# 拟合：tau_meas ≈ a*g(q) + b，输出 tau_signs / scale / 每关节增益
+ros2 run trotbot_dynamics calibrate_gravity.py fit \
+  --csv /tmp/gravity.csv \
+  --write-yaml /tmp/rq025_calib.yaml
+```
+
+- `sweep` 默认覆盖髋 ±0.14、大腿 ±0.45、小腿 ±0.35 rad；大范围重标可传
+  `--hip-range 0.14 --thigh-range 1.5 --calf-range 0.7`。
+- 标定完成后需重启整机栈恢复 `quadruped_controller_node`（`./main.sh restart`）。
+- `--urdf` 默认取 `share/trotbot/urdf/minidog_champ.urdf.xacro`（内部自动 `xacro`）。
+- 输出表包含 `range(g)`、`a`、`b`、`R²`、`rmse`、建议符号与增益；`LOW_EXCITATION` 表示该关节角度变化太小，需要加大行程重录。
+- 机身外壳/电路板/狗头挂在固定基座上，**不影响定基 `g(q)`**；只有腿上的质量/质心变化才需要重标。
+- 推荐值先人工核对：`tau_signs` 应与实际符号一致，`pinocchio_tau_ff_scale` 先 ≤1。
+
 说明：首版只做定基、仅重力项（`v=0`）；模型损坏/关节缺失时节点直接 FATAL 退出，不会静默输出错误力矩。URDF 通过 launch 的 `xacro` 生成，不依赖 `robot_state_publisher`。
 
 ### 启动平滑与发送限位（新增）

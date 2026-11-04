@@ -81,6 +81,7 @@ install(DIRECTORY
 
 install(PROGRAMS
   scripts/el05_motor_cansend.sh
+  scripts/plot_velocity_ff.py
   DESTINATION share/${PROJECT_NAME}/scripts
 )
 

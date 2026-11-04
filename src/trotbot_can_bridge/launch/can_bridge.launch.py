@@ -22,8 +22,12 @@ def generate_launch_description():
     use_pinocchio_tau_ff = LaunchConfiguration("use_pinocchio_tau_ff")
     description_file = LaunchConfiguration("description_file")
     pinocchio_tau_ff_scale = LaunchConfiguration("pinocchio_tau_ff_scale")
-    pinocchio_tau_ff_mode = PythonExpression(
-        ["'replace' if '", use_pinocchio_tau_ff, "' == 'true' else 'off'"]
+    # 必须用 ParameterValue(..., value_type=str) 包一层：
+    # 直接传字符串时 launch 会按 YAML 解析，'off' 会被解析成 bool False，
+    # 而节点声明的是 std::string，启动即抛 InvalidParameterTypeException 退出。
+    pinocchio_tau_ff_mode = ParameterValue(
+        PythonExpression(["'replace' if '", use_pinocchio_tau_ff, "' == 'true' else 'off'"]),
+        value_type=str,
     )
 
     declare_can0 = DeclareLaunchArgument(

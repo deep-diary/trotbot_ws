@@ -4,6 +4,19 @@
     kd: 2.5
     default_velocity: 0.0
     default_tau_ff: 0.0
+
+    # --- 规划位置差分速度前馈：v_ff = clamp(scale * d/dt(q_cmd), ±velocity_ff_max_rad_s) ---
+    # q_cmd 为平滑后实际下发的 CHAMP 关节角，v_ff 按 joint_signs 映射到 MIT 域后填入 MIT velocity 字段；
+    # 关闭时 velocity 字段仍为 default_velocity，行为与旧版完全一致
+    enable_velocity_ff: false
+    # 整体比例系数（1.0=直接用差分速度；0.7 更保守）
+    velocity_ff_scale: 1.0
+    # 电机侧绝对上限（rad/s，MIT 编码再受 ProtocolCodec::kVMax(50) 约束）
+    velocity_ff_max_rad_s: 8.0
+    # 一阶低通截止频率（Hz），<=0 关闭滤波；CHAMP 指令约 50Hz，建议 8~15（上游 200Hz 时可用 15~25）
+    velocity_ff_lpf_hz: 10.0
+    # 是否把 dq_ff 填进 /mit_motor_position_rad 的 velocity 字段（验证/绘图用）
+    publish_velocity_ff: true
     # 运行时在线联调（std_msgs/String，key=value 空格分隔）默认话题：
     #   /mit_gains_cmd
     # 示例：
@@ -51,9 +64,13 @@
 
     # --- RQ-025：Pinocchio 定基重力前馈（默认关闭）---
     # off=不启用；replace=用模型前馈替代查表；add=模型+查表叠加（注意双计重力）
-    pinocchio_tau_ff_mode: "off"
+    pinocchio_tau_ff_mode: "replace"
     pinocchio_tau_ff_topic: /model_tau_ff
-    pinocchio_tau_ff_scale: 0.5
+    # 2026-11-05 悬空标定（720 静态样本）：
+    #   tau_signs 与拟合符号一致（未改）；大腿可信增益≈1.0，左后大腿 0.65；
+    #   髋关节行程不足无法辨识斜率，按静态力矩比值取 0.4；小腿受摩擦影响取保守 0.5。
+    pinocchio_tau_ff_scale: 1.0
+    pinocchio_tau_ff_gain: [0.4, 1.0, 0.5, 0.4, 1.0, 0.5, 0.4, 0.65, 0.5, 0.4, 1.0, 0.5]
     pinocchio_tau_ff_timeout_s: 0.2
     pinocchio_tau_ff_ramp_s: 1.0
     # URDF τ -> 电机 τ_cmd 的符号（初值同 joint_signs；必须做静力/对拉验证后固化，勿只依赖位置符号）

@@ -141,6 +141,13 @@ public:
     kd_ = this->declare_parameter<double>("kd", 1.5);
     default_velocity_ = this->declare_parameter<double>("default_velocity", 0.0);
     default_tau_ff_ = this->declare_parameter<double>("default_tau_ff", 0.0);
+    enable_velocity_ff_ = this->declare_parameter<bool>("enable_velocity_ff", false);
+    velocity_ff_scale_ = this->declare_parameter<double>("velocity_ff_scale", 1.0);
+    velocity_ff_max_rad_s_ = this->declare_parameter<double>("velocity_ff_max_rad_s", 8.0);
+    velocity_ff_lpf_hz_ = this->declare_parameter<double>("velocity_ff_lpf_hz", 20.0);
+    publish_velocity_ff_ = this->declare_parameter<bool>("publish_velocity_ff", true);
+    velocity_ff_max_clamp_ = std::min(
+      std::fabs(velocity_ff_max_rad_s_), static_cast<double>(ProtocolCodec::kVMax));
     runtime_tune_topic_ = this->declare_parameter<std::string>("runtime_tune_topic", "/mit_gains_cmd");
     publish_feedback_joint_states_ = this->declare_parameter<bool>("publish_feedback_joint_states", true);
     feedback_joint_states_topic_ = this->declare_parameter<std::string>(
@@ -224,10 +231,19 @@ public:
     pinocchio_tau_ff_topic_ = this->declare_parameter<std::string>(
       "pinocchio_tau_ff_topic", "/model_tau_ff");
     pinocchio_tau_ff_scale_ = this->declare_parameter<double>("pinocchio_tau_ff_scale", 0.5);
+    pinocchio_tau_ff_gain_ = this->declare_parameter<std::vector<double>>(
+      "pinocchio_tau_ff_gain", std::vector<double>(12, 1.0));
     pinocchio_tau_ff_timeout_s_ = this->declare_parameter<double>("pinocchio_tau_ff_timeout_s", 0.2);
     pinocchio_tau_ff_ramp_s_ = this->declare_parameter<double>("pinocchio_tau_ff_ramp_s", 1.0);
     tau_signs_ = this->declare_parameter<std::vector<double>>(
       "tau_signs", std::vector<double>{});
+
+    if (pinocchio_tau_ff_gain_.size() != 12) {
+      RCLCPP_WARN(
+        this->get_logger(), "pinocchio_tau_ff_gain size %zu != 12, reset to all 1.0",
+        pinocchio_tau_ff_gain_.size());
+      pinocchio_tau_ff_gain_ = std::vector<double>(12, 1.0);
+    }
 
     if (pinocchio_tau_ff_timeout_s_ <= 0.0) {
       RCLCPP_WARN(
@@ -353,6 +369,11 @@ public:
     first_command_time_by_joint_ns_.fill(0);
     last_command_time_by_joint_ns_.fill(0);
     last_tx_pub_stamp_ns_.fill(0);
+    last_vel_sample_champ_rad_.fill(0.0);
+    last_vel_ff_rad_s_.fill(0.0);
+    last_commanded_mit_vel_rad_s_.fill(std::numeric_limits<double>::quiet_NaN());
+    last_vel_sample_ns_.fill(0);
+    has_vel_sample_.fill(false);
     latest_input_champ_rad_.fill(0.0);
     has_latest_input_.fill(false);
     model_tau_ff_urdf_.fill(std::numeric_limits<double>::quiet_NaN());
@@ -374,6 +395,26 @@ public:
       joint_mit_max_rad_ = std::vector<double>(12, ProtocolCodec::kPMax);
     }
     RebuildMotorLimitTable();
+
+    if (!std::isfinite(velocity_ff_scale_) || velocity_ff_scale_ < 0.0) {
+      RCLCPP_WARN(
+        this->get_logger(), "velocity_ff_scale invalid (%.3f), clamped to 0", velocity_ff_scale_);
+      velocity_ff_scale_ = 0.0;
+    }
+    if (!std::isfinite(velocity_ff_max_rad_s_) || velocity_ff_max_rad_s_ <= 0.0) {
+      RCLCPP_WARN(
+        this->get_logger(), "velocity_ff_max_rad_s invalid (%.3f), fallback to 8.0 rad/s",
+        velocity_ff_max_rad_s_);
+      velocity_ff_max_rad_s_ = 8.0;
+    }
+    velocity_ff_max_clamp_ = std::min(
+      std::fabs(velocity_ff_max_rad_s_), static_cast<double>(ProtocolCodec::kVMax));
+    if (enable_velocity_ff_) {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "Velocity FF enabled: v_ff = clamp(sign*scale*dq_champ, ±%.2f rad/s), scale=%.2f, lpf=%.1f Hz",
+        velocity_ff_max_clamp_, velocity_ff_scale_, velocity_ff_lpf_hz_);
+    }
 
     on_set_params_handle_ = this->add_on_set_parameters_callback(
       [this](const std::vector<rclcpp::Parameter> & parameters) {
@@ -407,6 +448,63 @@ private:
         }
         gravity_ff_scale_ = p.as_double();
         RCLCPP_WARN(this->get_logger(), "Runtime param: gravity_ff_scale=%.6f", gravity_ff_scale_);
+      } else if (name == "enable_velocity_ff") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_BOOL) {
+          out.successful = false;
+          out.reason = "enable_velocity_ff must be bool";
+          return out;
+        }
+        const bool prev = enable_velocity_ff_;
+        enable_velocity_ff_ = p.as_bool();
+        if (prev != enable_velocity_ff_) {
+          ResetAllVelocityFf();
+        }
+        RCLCPP_WARN(
+          this->get_logger(), "Runtime param: enable_velocity_ff=%d",
+          enable_velocity_ff_ ? 1 : 0);
+      } else if (name == "velocity_ff_scale") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+          out.successful = false;
+          out.reason = "velocity_ff_scale must be double";
+          return out;
+        }
+        velocity_ff_scale_ = Clamp(p.as_double(), 0.0, 3.0);
+        RCLCPP_WARN(
+          this->get_logger(), "Runtime param: velocity_ff_scale=%.4f", velocity_ff_scale_);
+      } else if (name == "velocity_ff_max_rad_s") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+          out.successful = false;
+          out.reason = "velocity_ff_max_rad_s must be double";
+          return out;
+        }
+        velocity_ff_max_rad_s_ = p.as_double();
+        if (!std::isfinite(velocity_ff_max_rad_s_) || velocity_ff_max_rad_s_ <= 0.0) {
+          velocity_ff_max_rad_s_ = 8.0;
+        }
+        velocity_ff_max_clamp_ = std::min(
+          std::fabs(velocity_ff_max_rad_s_), static_cast<double>(ProtocolCodec::kVMax));
+        RCLCPP_WARN(
+          this->get_logger(), "Runtime param: velocity_ff_max_rad_s=%.3f (clamp=%.3f)",
+          velocity_ff_max_rad_s_, velocity_ff_max_clamp_);
+      } else if (name == "velocity_ff_lpf_hz") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+          out.successful = false;
+          out.reason = "velocity_ff_lpf_hz must be double";
+          return out;
+        }
+        velocity_ff_lpf_hz_ = p.as_double();
+        RCLCPP_WARN(
+          this->get_logger(), "Runtime param: velocity_ff_lpf_hz=%.3f", velocity_ff_lpf_hz_);
+      } else if (name == "publish_velocity_ff") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_BOOL) {
+          out.successful = false;
+          out.reason = "publish_velocity_ff must be bool";
+          return out;
+        }
+        publish_velocity_ff_ = p.as_bool();
+        RCLCPP_WARN(
+          this->get_logger(), "Runtime param: publish_velocity_ff=%d",
+          publish_velocity_ff_ ? 1 : 0);
       } else if (name == "tau_ff_nominal_nm") {
         if (p.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY) {
           out.successful = false;
@@ -453,6 +551,27 @@ private:
         RCLCPP_WARN(
           this->get_logger(), "Runtime param: pinocchio_tau_ff_scale=%.6f",
           pinocchio_tau_ff_scale_);
+      } else if (name == "pinocchio_tau_ff_gain") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY) {
+          out.successful = false;
+          out.reason = "pinocchio_tau_ff_gain must be double[]";
+          return out;
+        }
+        const auto v = p.as_double_array();
+        if (v.size() != 12) {
+          out.successful = false;
+          out.reason = "pinocchio_tau_ff_gain must have 12 elements";
+          return out;
+        }
+        for (const double g : v) {
+          if (!std::isfinite(g) || g < 0.0) {
+            out.successful = false;
+            out.reason = "pinocchio_tau_ff_gain elements must be finite and >= 0";
+            return out;
+          }
+        }
+        pinocchio_tau_ff_gain_.assign(v.begin(), v.end());
+        RCLCPP_WARN(this->get_logger(), "Runtime param: pinocchio_tau_ff_gain updated (12 doubles)");
       } else if (name == "pinocchio_tau_ff_timeout_s") {
         if (p.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
           out.successful = false;
@@ -530,6 +649,8 @@ private:
 
     std::array<double, 12> mapped_rad{};
     mapped_rad.fill(std::numeric_limits<double>::quiet_NaN());
+    std::array<double, 12> mapped_vel{};
+    mapped_vel.fill(std::numeric_limits<double>::quiet_NaN());
 
     // 强制固定索引映射，保证每个周期尽量覆盖 12 个电机，避免名称映射分支造成分布不均。
     const size_t count = std::min(positions.size(), DogMapper::kTemporaryIndexMap.size());
@@ -557,7 +678,7 @@ private:
         ++skip_power_gate_window_;
         continue;
       }
-      SendMitFrame(route.value(), target, front_count, rear_count, &mapped_rad);
+      SendMitFrame(route.value(), target, front_count, rear_count, &mapped_rad, &mapped_vel);
       ++total_sent;
     }
 
@@ -569,13 +690,17 @@ private:
         js.name.emplace_back(jn);
       }
       js.position.assign(mapped_rad.begin(), mapped_rad.end());
+      if (publish_velocity_ff_ && enable_velocity_ff_) {
+        js.velocity.assign(mapped_vel.begin(), mapped_vel.end());
+      }
       mapped_positions_pub_->publish(js);
     }
 
     RCLCPP_INFO_THROTTLE(
       this->get_logger(), *this->get_clock(), 1000,
-      "MIT publish: total=%zu front(can0)=%u rear(can1)=%u kp=%.2f kd=%.2f v=%.2f tau=%.2f",
-      total_sent, front_count, rear_count, runtime_kp_can0_, runtime_kd_can0_, default_velocity_, runtime_tau_can0_);
+      "MIT publish: total=%zu front(can0)=%u rear(can1)=%u kp=%.2f kd=%.2f v=%.2f tau=%.2f vff=%d scale=%.2f max=%.2f",
+      total_sent, front_count, rear_count, runtime_kp_can0_, runtime_kd_can0_, default_velocity_, runtime_tau_can0_,
+      enable_velocity_ff_ ? 1 : 0, velocity_ff_scale_, velocity_ff_max_clamp_);
     const size_t joint_total = joint_cmd_clamp_count_total_ + joint_cmd_no_clamp_count_total_;
     const size_t motor_total = motor_cmd_clamp_count_total_ + motor_cmd_no_clamp_count_total_;
     const double joint_clamp_ratio = joint_total > 0 ?
@@ -592,7 +717,8 @@ private:
   void SendMitFrame(
     const MotorRoute & route, double champ_position_raw,
     uint32_t & front_count, uint32_t & rear_count,
-    std::array<double, 12> * mapped_out = nullptr)
+    std::array<double, 12> * mapped_out = nullptr,
+    std::array<double, 12> * velocity_out = nullptr)
   {
     const size_t idx = std::min(route.trajectory_index, static_cast<size_t>(11));
     const int64_t now_ns = this->now().nanoseconds();
@@ -624,12 +750,20 @@ private:
     const double use_kp = is_front ? runtime_kp_can0_ : runtime_kp_can1_;
     const double use_kd = is_front ? runtime_kd_can0_ : runtime_kd_can1_;
     const double use_tau = ComputeMitTorqueFf(idx, is_front);
+    const double use_velocity = Clamp(
+      default_velocity_ + ComputeVelocityFf(idx, champ_smoothed, now_ns),
+      static_cast<double>(ProtocolCodec::kVMin),
+      static_cast<double>(ProtocolCodec::kVMax));
+    last_commanded_mit_vel_rad_s_[idx] = use_velocity;
+    if (velocity_out != nullptr) {
+      (*velocity_out)[idx] = use_velocity;
+    }
 
     const auto frame = ProtocolCodec::BuildMitControlFrame(
       route.bus,
       route.motor_id,
       static_cast<float>(mapped_position),
-      static_cast<float>(default_velocity_),
+      static_cast<float>(use_velocity),
       static_cast<float>(use_kp),
       static_cast<float>(use_kd),
       static_cast<float>(use_tau));
@@ -694,11 +828,14 @@ private:
       const double use_kp = is_front ? runtime_kp_can0_ : runtime_kp_can1_;
       const double use_kd = is_front ? runtime_kd_can0_ : runtime_kd_can1_;
       const double use_tau = ComputeMitTorqueFf(idx, is_front);
+      const double refresh_velocity = last_commanded_mit_vel_rad_s_[idx];
+      const double use_velocity =
+        std::isfinite(refresh_velocity) ? refresh_velocity : default_velocity_;
       const auto frame = ProtocolCodec::BuildMitControlFrame(
         route.bus,
         route.motor_id,
         static_cast<float>(mapped_position),
-        static_cast<float>(default_velocity_),
+        static_cast<float>(use_velocity),
         static_cast<float>(use_kp),
         static_cast<float>(use_kd),
         static_cast<float>(use_tau));
@@ -774,6 +911,7 @@ private:
     } else {
       model_ff_ramp_start_ns_ = 0;
       last_tx_pub_stamp_ns_.fill(0);
+      ResetAllVelocityFf();
     }
   }
 
@@ -1075,8 +1213,9 @@ private:
     }
 
     const double sign = idx < tau_signs_.size() ? tau_signs_[idx] : 1.0;
+    const double gain = idx < pinocchio_tau_ff_gain_.size() ? pinocchio_tau_ff_gain_[idx] : 1.0;
     const double model_tau =
-      model_tau_ff_urdf_[idx] * sign * pinocchio_tau_ff_scale_ * RampFactor(now);
+      model_tau_ff_urdf_[idx] * sign * gain * pinocchio_tau_ff_scale_ * RampFactor(now);
     double tau = bus_tau + model_tau;
     if (pinocchio_tau_ff_mode_ == PinocchioTauFfMode::ADD) {
       tau += table_tau;
@@ -1100,6 +1239,7 @@ private:
     last_sent_champ_rad_[idx] = current_champ_feedback;
     first_command_time_by_joint_ns_[idx] = now.nanoseconds();
     last_command_time_by_joint_ns_[idx] = now.nanoseconds();
+    ResetVelocityFf(idx);
   }
 
   void ResetRuntimeTuning()
@@ -1197,6 +1337,79 @@ private:
     return out;
   }
 
+  /// 由平滑后实际下发的位置指令差分得到 MIT 域速度前馈（θ_mit=sign*θ_champ+offset ⇒ dq_mit=sign*dq_champ）。
+  double ComputeVelocityFf(size_t idx, double champ_smoothed, int64_t now_ns)
+  {
+    if (idx >= last_vel_ff_rad_s_.size()) {
+      return 0.0;
+    }
+    if (!enable_velocity_ff_) {
+      ResetVelocityFf(idx);
+      return 0.0;
+    }
+
+    const double dt = static_cast<double>(now_ns - last_vel_sample_ns_[idx]) * 1e-9;
+    if (!has_vel_sample_[idx]) {
+      // 首帧 / 重启 / 门禁恢复：只记录采样点，不下发假速度
+      last_vel_sample_champ_rad_[idx] = champ_smoothed;
+      last_vel_sample_ns_[idx] = now_ns;
+      has_vel_sample_[idx] = true;
+      last_vel_ff_rad_s_[idx] = 0.0;
+      return 0.0;
+    }
+    if (!std::isfinite(dt) || dt > 0.1) {
+      // 长时间断帧（门禁关闭/上游停发）：重置采样，避免大 dt 造成假速度
+      last_vel_sample_champ_rad_[idx] = champ_smoothed;
+      last_vel_sample_ns_[idx] = now_ns;
+      last_vel_ff_rad_s_[idx] = 0.0;
+      return 0.0;
+    }
+    if (dt <= 1e-3) {
+      // 重复/抖动帧：位置变化不可信，沿用上次滤波值
+      return ClampMappedVelocityFf(idx, last_vel_ff_rad_s_[idx]);
+    }
+
+    const double raw =
+      (champ_smoothed - last_vel_sample_champ_rad_[idx]) / dt;
+    double filtered = raw;
+    if (velocity_ff_lpf_hz_ > 1e-6) {
+      const double tau = 1.0 / (2.0 * 3.141592653589793 * velocity_ff_lpf_hz_);
+      const double alpha = dt / (tau + dt);
+      filtered = last_vel_ff_rad_s_[idx] + alpha * (raw - last_vel_ff_rad_s_[idx]);
+    }
+    last_vel_sample_champ_rad_[idx] = champ_smoothed;
+    last_vel_sample_ns_[idx] = now_ns;
+    last_vel_ff_rad_s_[idx] = filtered;
+    return ClampMappedVelocityFf(idx, filtered);
+  }
+
+  /// CHAMP 域速度 → MIT 域（乘 joint_signs）→ 乘比例系数 → 限幅。
+  double ClampMappedVelocityFf(size_t idx, double champ_vel) const
+  {
+    const double sign = idx < joint_signs_.size() ? joint_signs_[idx] : 1.0;
+    const double v_mit = sign * champ_vel * velocity_ff_scale_;
+    const double lim = std::max(0.0, velocity_ff_max_clamp_);
+    return Clamp(v_mit, -lim, lim);
+  }
+
+  void ResetVelocityFf(size_t idx)
+  {
+    if (idx >= last_vel_ff_rad_s_.size()) {
+      return;
+    }
+    last_vel_ff_rad_s_[idx] = 0.0;
+    last_vel_sample_ns_[idx] = 0;
+    has_vel_sample_[idx] = false;
+    last_commanded_mit_vel_rad_s_[idx] = std::numeric_limits<double>::quiet_NaN();
+  }
+
+  void ResetAllVelocityFf()
+  {
+    for (size_t i = 0; i < last_vel_ff_rad_s_.size(); ++i) {
+      ResetVelocityFf(i);
+    }
+  }
+
   void RebuildMotorLimitTable()
   {
     if (!derive_motor_limits_from_joint_cmd_) {
@@ -1253,9 +1466,15 @@ private:
     bool has_kp = false;
     bool has_kd = false;
     bool has_tau = false;
+    bool has_vff = false;
+    bool has_vff_scale = false;
+    bool has_vff_max = false;
     double new_kp = 0.0;
     double new_kd = 0.0;
     double new_tau = 0.0;
+    bool new_vff = false;
+    double new_vff_scale = 0.0;
+    double new_vff_max = 0.0;
 
     const auto tokens = SplitTokens(msg->data);
     for (const auto & token : tokens) {
@@ -1272,6 +1491,11 @@ private:
         do_reset = ParseBool(value);
         continue;
       }
+      if (key == "vff") {
+        new_vff = ParseBool(value);
+        has_vff = true;
+        continue;
+      }
       try {
         const double parsed = std::stod(value);
         if (key == "kp") {
@@ -1283,6 +1507,12 @@ private:
         } else if (key == "tau" || key == "tau_ff") {
           new_tau = Clamp(parsed, ProtocolCodec::kTMin, ProtocolCodec::kTMax);
           has_tau = true;
+        } else if (key == "vff_scale") {
+          new_vff_scale = Clamp(parsed, 0.0, 3.0);
+          has_vff_scale = true;
+        } else if (key == "vff_max") {
+          new_vff_max = parsed;
+          has_vff_max = true;
         }
       } catch (const std::exception &) {
         RCLCPP_WARN(this->get_logger(), "Ignore invalid tune token: %s", token.c_str());
@@ -1291,6 +1521,7 @@ private:
 
     if (do_reset) {
       ResetRuntimeTuning();
+      ResetAllVelocityFf();
       RCLCPP_WARN(this->get_logger(), "MIT tune reset to defaults from parameters.");
     }
 
@@ -1314,19 +1545,42 @@ private:
     if (has_tau) {
       apply_scoped(runtime_tau_can0_, runtime_tau_can1_, new_tau);
     }
+    if (has_vff) {
+      enable_velocity_ff_ = new_vff;
+      ResetAllVelocityFf();
+    }
+    if (has_vff_scale) {
+      velocity_ff_scale_ = new_vff_scale;
+    }
+    if (has_vff_max) {
+      if (!std::isfinite(new_vff_max) || new_vff_max <= 0.0) {
+        velocity_ff_max_rad_s_ = 8.0;
+      } else {
+        velocity_ff_max_rad_s_ = new_vff_max;
+      }
+      velocity_ff_max_clamp_ = std::min(
+        std::fabs(velocity_ff_max_rad_s_), static_cast<double>(ProtocolCodec::kVMax));
+    }
 
     RCLCPP_WARN(
       this->get_logger(),
-      "MIT tune applied: raw='%s' | can0(kp=%.2f,kd=%.2f,tau=%.2f) can1(kp=%.2f,kd=%.2f,tau=%.2f)",
+      "MIT tune applied: raw='%s' | can0(kp=%.2f,kd=%.2f,tau=%.2f) can1(kp=%.2f,kd=%.2f,tau=%.2f) | vff=%d scale=%.2f max=%.2f",
       msg->data.c_str(),
       runtime_kp_can0_, runtime_kd_can0_, runtime_tau_can0_,
-      runtime_kp_can1_, runtime_kd_can1_, runtime_tau_can1_);
+      runtime_kp_can1_, runtime_kd_can1_, runtime_tau_can1_,
+      enable_velocity_ff_ ? 1 : 0, velocity_ff_scale_, velocity_ff_max_clamp_);
   }
 
   double kp_{30.0};
   double kd_{1.5};
   double default_velocity_{0.0};
   double default_tau_ff_{0.0};
+  bool enable_velocity_ff_{false};
+  double velocity_ff_scale_{1.0};
+  double velocity_ff_max_rad_s_{8.0};
+  double velocity_ff_lpf_hz_{20.0};
+  bool publish_velocity_ff_{true};
+  double velocity_ff_max_clamp_{8.0};
   std::string runtime_tune_topic_;
   bool publish_feedback_joint_states_{true};
   std::string feedback_joint_states_topic_;
@@ -1341,6 +1595,7 @@ private:
   PinocchioTauFfMode pinocchio_tau_ff_mode_{PinocchioTauFfMode::OFF};
   std::string pinocchio_tau_ff_topic_;
   double pinocchio_tau_ff_scale_{0.5};
+  std::vector<double> pinocchio_tau_ff_gain_{std::vector<double>(12, 1.0)};
   double pinocchio_tau_ff_timeout_s_{0.2};
   double pinocchio_tau_ff_ramp_s_{1.0};
   std::vector<double> tau_signs_;
@@ -1386,6 +1641,11 @@ private:
   std::string mit_mapped_topic_;
   rclcpp::Publisher<JointState>::SharedPtr mapped_positions_pub_;
   std::array<double, 256> last_commanded_mit_rad_{};
+  std::array<double, 12> last_vel_sample_champ_rad_{};
+  std::array<double, 12> last_vel_ff_rad_s_{};
+  std::array<double, 12> last_commanded_mit_vel_rad_s_{};
+  std::array<int64_t, 12> last_vel_sample_ns_{};
+  std::array<bool, 12> has_vel_sample_{};
   std::array<double, 12> last_feedback_champ_rad_{};
   std::array<double, 12> last_feedback_joint_vel_rad_s_{};
   std::array<double, 12> last_feedback_effort_nm_{};

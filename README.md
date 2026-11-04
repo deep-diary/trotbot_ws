@@ -303,6 +303,7 @@ cd ~/trotbot_ws
 ./main.sh start --sim     # 仿真 start
 ./main.sh stop
 ./main.sh status
+./main.sh check           # 启动自检：CAN 桥节点 + 12 个电机是否都在线（真机 start 后自动执行）
 
 # 额外参数原样追加给 ros2 launch（后出现的同名参数覆盖默认值）
 ./main.sh restart use_status_led:=false
@@ -551,6 +552,15 @@ ros2 param set /motor_protocol_node pinocchio_tau_ff_mode off    # 一键关闭
 - `pinocchio_tau_ff_scale` 建议从 0.2 起步，逐级 0.35 → 0.5；`tau_signs` 必须逐关节静力验证。
 - 模型数据超过 `pinocchio_tau_ff_timeout_s`（默认 0.2s）未更新时，会自动回落到查表/总线偏置。
 - 首次使用前需编译 `trotbot_dynamics`（依赖 `ros-humble-pinocchio`）。
+
+换腿负载/加壳后可重标：
+
+```bash
+ros2 run trotbot_dynamics calibrate_gravity.py record --csv /tmp/gravity.csv
+ros2 run trotbot_dynamics calibrate_gravity.py fit --csv /tmp/gravity.csv --write-yaml /tmp/rq025_calib.yaml
+```
+
+机身外壳/电路板/狗头不影响定基 `g(q)`；只有腿上的质量/质心变化需要重标。
 
 ## ROS2 架构与消息说明（MIT-only 双节点 CAN 桥接）
 
