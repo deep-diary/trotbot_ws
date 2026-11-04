@@ -11,10 +11,10 @@ source /opt/ros/humble/setup.bash
 cd /home/cat/trotbot_ws
 ```
 
-只编译 `trotbot` 功能包（改 URDF、launch、meshes 等后常用）：
+只编译常用功能包（`trotbot`、`trotbot_can_bridge`、`trotbot_dynamics`）：
 
 ```bash
-colcon build --packages-select trotbot trotbot_can_bridge --symlink-install
+colcon build --packages-select trotbot trotbot_can_bridge trotbot_dynamics --symlink-install
 ```
 
 编译整个工作空间：
@@ -344,7 +344,7 @@ bash "$(ros2 pkg prefix trotbot)/share/trotbot/scripts/trotbot_ctl.sh" restart
 ```bash
 cd ~/trotbot_ws
 source /opt/ros/humble/setup.bash
-colcon build --symlink-install --allow-overriding champ champ_msgs --packages-up-to trotbot trotbot_status_led trotbot_can_bridge
+colcon build --symlink-install --allow-overriding champ champ_msgs --packages-up-to trotbot trotbot_status_led trotbot_can_bridge trotbot_dynamics
 sudo systemctl restart trotbot-basic
 sudo systemctl status trotbot-basic --no-pager
 # 可选：看启动日志
@@ -535,6 +535,22 @@ ros2 topic echo /can_frames_rx_line
 
 - `publish_hex_lines` 默认关闭，修改 `src/trotbot_can_bridge/config/bridge.yaml` 后重启 `can_transport_node` 生效（字段说明见 §4.5）。
 - 主动上报帧为扩展帧、ID 形如 `0x18xxxxxx`；MIT 下发帧高字节为 `0x01`（如 `0x017FFF0D`，中间字节为力矩编码），电机应答反馈为 `0x02...`。直接用 `candump` 看时以实际打印为准。
+
+**模型重力前馈（RQ-025，默认关闭）**：`trotbot_dynamics` 从 URDF 计算定基重力项并发布 `/model_tau_ff`，`motor_protocol_node` 按 `pinocchio_tau_ff_mode=replace|add` 合并进 MIT `tau_ff`。
+
+```bash
+ros2 launch trotbot trotbot_basic.launch.py \
+  use_can_bridge:=true \
+  use_pinocchio_tau_ff:=true \
+  pinocchio_tau_ff_scale:=0.2
+
+ros2 topic echo /model_tau_ff --once                             # name + effort（Nm，URDF 符号）
+ros2 param set /motor_protocol_node pinocchio_tau_ff_mode off    # 一键关闭
+```
+
+- `pinocchio_tau_ff_scale` 建议从 0.2 起步，逐级 0.35 → 0.5；`tau_signs` 必须逐关节静力验证。
+- 模型数据超过 `pinocchio_tau_ff_timeout_s`（默认 0.2s）未更新时，会自动回落到查表/总线偏置。
+- 首次使用前需编译 `trotbot_dynamics`（依赖 `ros-humble-pinocchio`）。
 
 ## ROS2 架构与消息说明（MIT-only 双节点 CAN 桥接）
 

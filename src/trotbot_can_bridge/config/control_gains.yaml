@@ -49,6 +49,16 @@
     # 站立实测：约 8s、120 帧 `effort` 均值（仅作前馈初值；左右/前后不对称来自载荷与标定，属常见现象）
     tau_ff_nominal_nm: [0.100772, 0.150262, -0.635247, -0.055963, -0.044155, 0.919803, -0.154716, -0.476715, -1.278698, 0.220113, 0.171255, 1.020762]
 
+    # --- RQ-025：Pinocchio 定基重力前馈（默认关闭）---
+    # off=不启用；replace=用模型前馈替代查表；add=模型+查表叠加（注意双计重力）
+    pinocchio_tau_ff_mode: "off"
+    pinocchio_tau_ff_topic: /model_tau_ff
+    pinocchio_tau_ff_scale: 0.5
+    pinocchio_tau_ff_timeout_s: 0.2
+    pinocchio_tau_ff_ramp_s: 1.0
+    # URDF τ -> 电机 τ_cmd 的符号（初值同 joint_signs；必须做静力/对拉验证后固化，勿只依赖位置符号）
+    tau_signs: [-1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0]
+
     # 启动平滑与发送限速（减少趴姿->站立突变）
     enable_startup_smoothing: true
     startup_smoothing_duration_s: 3.0

@@ -90,6 +90,37 @@ static TuneScope ParseScope(const std::string & text)
   return TuneScope::ALL;
 }
 
+enum class PinocchioTauFfMode
+{
+  OFF,
+  REPLACE,
+  ADD,
+};
+
+static PinocchioTauFfMode ParsePinocchioTauFfMode(const std::string & text)
+{
+  const std::string v = ToLower(text);
+  if (v == "replace") {
+    return PinocchioTauFfMode::REPLACE;
+  }
+  if (v == "add") {
+    return PinocchioTauFfMode::ADD;
+  }
+  return PinocchioTauFfMode::OFF;
+}
+
+static const char * PinocchioTauFfModeName(PinocchioTauFfMode mode)
+{
+  switch (mode) {
+    case PinocchioTauFfMode::REPLACE:
+      return "replace";
+    case PinocchioTauFfMode::ADD:
+      return "add";
+    default:
+      return "off";
+  }
+}
+
 static std::optional<MotorRoute> GetRouteByMotorId(uint8_t motor_id)
 {
   for (const auto & route : DogMapper::kTemporaryIndexMap) {
@@ -187,6 +218,49 @@ public:
       tau_ff_nominal_nm_.resize(12, 0.0);
     }
 
+    // RQ-025：Pinocchio 定基重力前馈（默认关闭）
+    pinocchio_tau_ff_mode_ = ParsePinocchioTauFfMode(
+      this->declare_parameter<std::string>("pinocchio_tau_ff_mode", "off"));
+    pinocchio_tau_ff_topic_ = this->declare_parameter<std::string>(
+      "pinocchio_tau_ff_topic", "/model_tau_ff");
+    pinocchio_tau_ff_scale_ = this->declare_parameter<double>("pinocchio_tau_ff_scale", 0.5);
+    pinocchio_tau_ff_timeout_s_ = this->declare_parameter<double>("pinocchio_tau_ff_timeout_s", 0.2);
+    pinocchio_tau_ff_ramp_s_ = this->declare_parameter<double>("pinocchio_tau_ff_ramp_s", 1.0);
+    tau_signs_ = this->declare_parameter<std::vector<double>>(
+      "tau_signs", std::vector<double>{});
+
+    if (pinocchio_tau_ff_timeout_s_ <= 0.0) {
+      RCLCPP_WARN(
+        this->get_logger(), "pinocchio_tau_ff_timeout_s <= 0, fallback to 0.2 s");
+      pinocchio_tau_ff_timeout_s_ = 0.2;
+    }
+    if (pinocchio_tau_ff_ramp_s_ < 0.0) {
+      RCLCPP_WARN(this->get_logger(), "pinocchio_tau_ff_ramp_s < 0, fallback to 0.0 s");
+      pinocchio_tau_ff_ramp_s_ = 0.0;
+    }
+    if (tau_signs_.size() != 12) {
+      if (!tau_signs_.empty()) {
+        RCLCPP_WARN(
+          this->get_logger(), "tau_signs size %zu != 12, fallback to joint_signs",
+          tau_signs_.size());
+      } else {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "tau_signs not set, fallback to joint_signs; verify URDF->motor torque sign on bench");
+      }
+      tau_signs_ = joint_signs_;
+      tau_signs_explicit_ = false;
+    } else {
+      tau_signs_explicit_ = true;
+    }
+    if (pinocchio_tau_ff_mode_ != PinocchioTauFfMode::OFF) {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "RQ-025 model feedforward enabled: mode=%s scale=%.3f timeout=%.3fs ramp=%.3fs",
+        PinocchioTauFfModeName(pinocchio_tau_ff_mode_), pinocchio_tau_ff_scale_,
+        pinocchio_tau_ff_timeout_s_, pinocchio_tau_ff_ramp_s_);
+    }
+
     publish_mit_mapped_ = this->declare_parameter<bool>("publish_mit_mapped_positions", true);
     mit_mapped_topic_ = this->declare_parameter<std::string>(
       "mit_mapped_positions_topic", "/mit_motor_position_rad");
@@ -200,6 +274,9 @@ public:
     tune_sub_ = this->create_subscription<String>(
       runtime_tune_topic_, 10,
       std::bind(&MotorProtocolNode::OnTuneCommand, this, std::placeholders::_1));
+    model_tau_sub_ = this->create_subscription<JointState>(
+      pinocchio_tau_ff_topic_, rclcpp::SensorDataQoS(),
+      std::bind(&MotorProtocolNode::OnModelTauFf, this, std::placeholders::_1));
     if (enable_power_sequence_gate_) {
       gate_sub_ = this->create_subscription<Bool>(
         power_sequence_gate_topic_, 10,
@@ -278,6 +355,13 @@ public:
     last_tx_pub_stamp_ns_.fill(0);
     latest_input_champ_rad_.fill(0.0);
     has_latest_input_.fill(false);
+    model_tau_ff_urdf_.fill(std::numeric_limits<double>::quiet_NaN());
+    model_tau_ff_valid_.fill(false);
+    has_model_tau_ff_ = false;
+    model_tau_ff_max_abs_ = 0.0;
+    if (!enable_power_sequence_gate_) {
+      model_ff_ramp_start_ns_ = this->now().nanoseconds();
+    }
 
     if (joint_cmd_min_rad_.size() != 12 || joint_cmd_max_rad_.size() != 12) {
       RCLCPP_WARN(this->get_logger(), "joint_cmd_min_rad/max size mismatch, using default [-3.14, 3.14]x12");
@@ -337,6 +421,92 @@ private:
         }
         tau_ff_nominal_nm_.assign(v.begin(), v.end());
         RCLCPP_WARN(this->get_logger(), "Runtime param: tau_ff_nominal_nm updated (12 doubles)");
+      } else if (name == "pinocchio_tau_ff_mode") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_STRING) {
+          out.successful = false;
+          out.reason = "pinocchio_tau_ff_mode must be string (off|replace|add)";
+          return out;
+        }
+        const auto prev = pinocchio_tau_ff_mode_;
+        pinocchio_tau_ff_mode_ = ParsePinocchioTauFfMode(p.as_string());
+        if (prev == PinocchioTauFfMode::OFF && pinocchio_tau_ff_mode_ != PinocchioTauFfMode::OFF) {
+          model_ff_ramp_start_ns_ =
+            (power_gate_open_ || !enable_power_sequence_gate_) ? this->now().nanoseconds() : 0;
+        } else if (pinocchio_tau_ff_mode_ == PinocchioTauFfMode::OFF) {
+          model_ff_ramp_start_ns_ = 0;
+        }
+        RCLCPP_WARN(
+          this->get_logger(), "Runtime param: pinocchio_tau_ff_mode=%s",
+          PinocchioTauFfModeName(pinocchio_tau_ff_mode_));
+      } else if (name == "pinocchio_tau_ff_scale") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+          out.successful = false;
+          out.reason = "pinocchio_tau_ff_scale must be double";
+          return out;
+        }
+        pinocchio_tau_ff_scale_ = std::max(0.0, p.as_double());
+        if (pinocchio_tau_ff_scale_ > 1.0) {
+          RCLCPP_WARN(
+            this->get_logger(), "pinocchio_tau_ff_scale=%.3f > 1.0, model feedforward may over-compensate",
+            pinocchio_tau_ff_scale_);
+        }
+        RCLCPP_WARN(
+          this->get_logger(), "Runtime param: pinocchio_tau_ff_scale=%.6f",
+          pinocchio_tau_ff_scale_);
+      } else if (name == "pinocchio_tau_ff_timeout_s") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+          out.successful = false;
+          out.reason = "pinocchio_tau_ff_timeout_s must be double";
+          return out;
+        }
+        const double v = p.as_double();
+        if (v <= 0.0) {
+          out.successful = false;
+          out.reason = "pinocchio_tau_ff_timeout_s must be > 0";
+          return out;
+        }
+        pinocchio_tau_ff_timeout_s_ = v;
+        RCLCPP_WARN(
+          this->get_logger(), "Runtime param: pinocchio_tau_ff_timeout_s=%.6f",
+          pinocchio_tau_ff_timeout_s_);
+      } else if (name == "pinocchio_tau_ff_ramp_s") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+          out.successful = false;
+          out.reason = "pinocchio_tau_ff_ramp_s must be double";
+          return out;
+        }
+        const double v = p.as_double();
+        if (v < 0.0) {
+          out.successful = false;
+          out.reason = "pinocchio_tau_ff_ramp_s must be >= 0";
+          return out;
+        }
+        pinocchio_tau_ff_ramp_s_ = v;
+        RCLCPP_WARN(
+          this->get_logger(), "Runtime param: pinocchio_tau_ff_ramp_s=%.6f",
+          pinocchio_tau_ff_ramp_s_);
+      } else if (name == "tau_signs") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY) {
+          out.successful = false;
+          out.reason = "tau_signs must be double[]";
+          return out;
+        }
+        const auto v = p.as_double_array();
+        if (v.size() != 12) {
+          out.successful = false;
+          out.reason = "tau_signs must have 12 elements";
+          return out;
+        }
+        for (const double s : v) {
+          if (std::fabs(s) < 1e-6) {
+            out.successful = false;
+            out.reason = "tau_signs elements must be non-zero";
+            return out;
+          }
+        }
+        tau_signs_.assign(v.begin(), v.end());
+        tau_signs_explicit_ = true;
+        RCLCPP_WARN(this->get_logger(), "Runtime param: tau_signs updated (12 doubles)");
       }
     }
     return out;
@@ -567,6 +737,17 @@ private:
       power_gate_open_ ? 1 : 0,
       skip_power_gate_window_);
 
+    if (pinocchio_tau_ff_mode_ != PinocchioTauFfMode::OFF) {
+      const double model_age_s = has_model_tau_ff_ ?
+        (this->now() - model_tau_ff_stamp_).seconds() : -1.0;
+      RCLCPP_INFO(
+        this->get_logger(),
+        "MP model_ff: mode=%s age=%.3fs max|g|=%.4f scale=%.3f tau_signs=%s",
+        PinocchioTauFfModeName(pinocchio_tau_ff_mode_), model_age_s,
+        model_tau_ff_max_abs_, pinocchio_tau_ff_scale_,
+        tau_signs_explicit_ ? "param" : "joint_signs-fallback");
+    }
+
     traj_cb_count_window_ = 0;
     traj_joint_count_window_ = 0;
     tx_traj_total_window_ = 0;
@@ -588,7 +769,10 @@ private:
     }
     power_gate_open_ = next;
     RCLCPP_WARN(this->get_logger(), "Power sequence gate changed: gate_open=%d", power_gate_open_ ? 1 : 0);
-    if (!power_gate_open_) {
+    if (power_gate_open_) {
+      model_ff_ramp_start_ns_ = this->now().nanoseconds();
+    } else {
+      model_ff_ramp_start_ns_ = 0;
       last_tx_pub_stamp_ns_.fill(0);
     }
   }
@@ -800,14 +984,103 @@ private:
     feedback_joint_states_pub_->publish(js);
   }
 
-  double ComputeMitTorqueFf(size_t idx, bool is_front) const
+  void OnModelTauFf(const JointState::SharedPtr msg)
   {
-    const double bus_tau = is_front ? runtime_tau_can0_ : runtime_tau_can1_;
-    if (!enable_joint_tau_ff_) {
-      return Clamp(bus_tau, ProtocolCodec::kTMin, ProtocolCodec::kTMax);
+    if (pinocchio_tau_ff_mode_ == PinocchioTauFfMode::OFF) {
+      return;
     }
+
+    std::array<double, 12> values;
+    values.fill(std::numeric_limits<double>::quiet_NaN());
+    std::array<bool, 12> got{};
+    size_t matched = 0;
+
+    const size_t count = std::min(msg->name.size(), msg->effort.size());
+    for (size_t k = 0; k < count; ++k) {
+      size_t slot = DogMapper::kChampJointNames.size();
+      for (size_t i = 0; i < DogMapper::kChampJointNames.size(); ++i) {
+        if (msg->name[k] == DogMapper::kChampJointNames[i]) {
+          slot = i;
+          break;
+        }
+      }
+      if (slot >= DogMapper::kChampJointNames.size()) {
+        continue;
+      }
+      const double tau = msg->effort[k];
+      if (!std::isfinite(tau)) {
+        RCLCPP_WARN_THROTTLE(
+          this->get_logger(), *this->get_clock(), 2000,
+          "non-finite model tau_ff for joint '%s', ignore frame", msg->name[k].c_str());
+        return;
+      }
+      values[slot] = tau;
+      if (!got[slot]) {
+        got[slot] = true;
+        ++matched;
+      }
+    }
+
+    if (matched != 12) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "model tau_ff missing joints (%zu/12), ignore frame", matched);
+      return;
+    }
+
+    double max_abs = 0.0;
+    for (const double v : values) {
+      max_abs = std::max(max_abs, std::fabs(v));
+    }
+    model_tau_ff_urdf_ = values;
+    model_tau_ff_valid_ = got;
+    model_tau_ff_max_abs_ = max_abs;
+    model_tau_ff_stamp_ = this->now();
+    has_model_tau_ff_ = true;
+  }
+
+  double RampFactor(const rclcpp::Time & now) const
+  {
+    if (pinocchio_tau_ff_ramp_s_ <= 1e-6) {
+      return 1.0;
+    }
+    if (model_ff_ramp_start_ns_ <= 0) {
+      return 0.0;
+    }
+    const double elapsed =
+      static_cast<double>(now.nanoseconds() - model_ff_ramp_start_ns_) * 1e-9;
+    return Clamp(elapsed / pinocchio_tau_ff_ramp_s_, 0.0, 1.0);
+  }
+
+  double ComputeMitTorqueFf(size_t idx, bool is_front)
+  {
+    const auto now = this->now();
+    const double bus_tau = is_front ? runtime_tau_can0_ : runtime_tau_can1_;
     const double nominal = idx < tau_ff_nominal_nm_.size() ? tau_ff_nominal_nm_[idx] : 0.0;
-    const double tau = bus_tau + gravity_ff_scale_ * nominal;
+    const double table_tau = enable_joint_tau_ff_ ? gravity_ff_scale_ * nominal : 0.0;
+
+    if (pinocchio_tau_ff_mode_ == PinocchioTauFfMode::OFF) {
+      return Clamp(bus_tau + table_tau, ProtocolCodec::kTMin, ProtocolCodec::kTMax);
+    }
+
+    const bool fresh = has_model_tau_ff_ &&
+      (now - model_tau_ff_stamp_).seconds() <= pinocchio_tau_ff_timeout_s_ &&
+      idx < model_tau_ff_valid_.size() && model_tau_ff_valid_[idx];
+    if (!fresh) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "model tau_ff stale/invalid, fallback to table/bus bias (mode=%s)",
+        PinocchioTauFfModeName(pinocchio_tau_ff_mode_));
+      return Clamp(bus_tau + table_tau, ProtocolCodec::kTMin, ProtocolCodec::kTMax);
+    }
+
+    const double sign = idx < tau_signs_.size() ? tau_signs_[idx] : 1.0;
+    const double model_tau =
+      model_tau_ff_urdf_[idx] * sign * pinocchio_tau_ff_scale_ * RampFactor(now);
+    double tau = bus_tau + model_tau;
+    if (pinocchio_tau_ff_mode_ == PinocchioTauFfMode::ADD) {
+      tau += table_tau;
+    }
     return Clamp(tau, ProtocolCodec::kTMin, ProtocolCodec::kTMax);
   }
 
@@ -1065,6 +1338,19 @@ private:
   bool enable_joint_tau_ff_{false};
   double gravity_ff_scale_{0.5};
   std::vector<double> tau_ff_nominal_nm_;
+  PinocchioTauFfMode pinocchio_tau_ff_mode_{PinocchioTauFfMode::OFF};
+  std::string pinocchio_tau_ff_topic_;
+  double pinocchio_tau_ff_scale_{0.5};
+  double pinocchio_tau_ff_timeout_s_{0.2};
+  double pinocchio_tau_ff_ramp_s_{1.0};
+  std::vector<double> tau_signs_;
+  bool tau_signs_explicit_{false};
+  std::array<double, 12> model_tau_ff_urdf_{};
+  std::array<bool, 12> model_tau_ff_valid_{};
+  rclcpp::Time model_tau_ff_stamp_{0, 0, RCL_ROS_TIME};
+  bool has_model_tau_ff_{false};
+  double model_tau_ff_max_abs_{0.0};
+  int64_t model_ff_ramp_start_ns_{0};
   bool use_joint_cmd_limits_{true};
   std::vector<double> joint_cmd_min_rad_;
   std::vector<double> joint_cmd_max_rad_;
@@ -1146,6 +1432,7 @@ private:
   rclcpp::Subscription<JointTrajectory>::SharedPtr traj_sub_;
   rclcpp::Subscription<UInt8MultiArray>::SharedPtr rx_sub_;
   rclcpp::Subscription<String>::SharedPtr tune_sub_;
+  rclcpp::Subscription<JointState>::SharedPtr model_tau_sub_;
   rclcpp::Subscription<Bool>::SharedPtr gate_sub_;
   rclcpp::Publisher<UInt8MultiArray>::SharedPtr tx_pub_;
   rclcpp::Publisher<String>::SharedPtr feedback_pub_;

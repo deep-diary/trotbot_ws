@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -17,6 +19,12 @@ def generate_launch_description():
     bridge_file = LaunchConfiguration("bridge_file")
     power_sequence_file = LaunchConfiguration("power_sequence_file")
     use_power_sequence = LaunchConfiguration("use_power_sequence")
+    use_pinocchio_tau_ff = LaunchConfiguration("use_pinocchio_tau_ff")
+    description_file = LaunchConfiguration("description_file")
+    pinocchio_tau_ff_scale = LaunchConfiguration("pinocchio_tau_ff_scale")
+    pinocchio_tau_ff_mode = PythonExpression(
+        ["'replace' if '", use_pinocchio_tau_ff, "' == 'true' else 'off'"]
+    )
 
     declare_can0 = DeclareLaunchArgument(
         "can0_name", default_value="can0", description="SocketCAN interface name for front legs"
@@ -44,6 +52,21 @@ def generate_launch_description():
         default_value="true",
         description="是否启用遥控上下电状态机节点 power_sequence_node",
     )
+    declare_use_pinocchio_tau_ff = DeclareLaunchArgument(
+        "use_pinocchio_tau_ff",
+        default_value="false",
+        description="是否启动 trotbot_dynamics 的 Pinocchio 定基重力前馈（RQ-025）",
+    )
+    declare_description_file = DeclareLaunchArgument(
+        "description_file",
+        default_value="minidog_champ.urdf.xacro",
+        description="Pinocchio 模型使用的 URDF/xacro（位于 share/trotbot/urdf/）",
+    )
+    declare_pinocchio_tau_ff_scale = DeclareLaunchArgument(
+        "pinocchio_tau_ff_scale",
+        default_value="0.5",
+        description="模型重力前馈总增益（建议 < 1）",
+    )
 
     can_transport = Node(
         package="trotbot_can_bridge",
@@ -65,6 +88,12 @@ def generate_launch_description():
         parameters=[
             gains_file,
             {"enable_power_sequence_gate": use_power_sequence},
+            {
+                "pinocchio_tau_ff_mode": pinocchio_tau_ff_mode,
+                "pinocchio_tau_ff_scale": ParameterValue(
+                    pinocchio_tau_ff_scale, value_type=float
+                ),
+            },
         ],
     )
 
@@ -77,6 +106,20 @@ def generate_launch_description():
         condition=IfCondition(use_power_sequence),
     )
 
+    pinocchio_tau_ff_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution(
+                [
+                    FindPackageShare("trotbot_dynamics"),
+                    "launch",
+                    "pinocchio_tau_ff.launch.py",
+                ]
+            )
+        ),
+        launch_arguments={"description_file": description_file}.items(),
+        condition=IfCondition(use_pinocchio_tau_ff),
+    )
+
     return LaunchDescription(
         [
             declare_can0,
@@ -85,8 +128,12 @@ def generate_launch_description():
             declare_bridge,
             declare_power_sequence_file,
             declare_use_power_sequence,
+            declare_use_pinocchio_tau_ff,
+            declare_description_file,
+            declare_pinocchio_tau_ff_scale,
             can_transport,
             motor_protocol,
             power_sequence,
+            pinocchio_tau_ff_launch,
         ]
     )

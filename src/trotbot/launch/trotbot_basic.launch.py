@@ -63,6 +63,13 @@ def generate_launch_description():
         description="是否启动 MIT-only 双节点 CAN bridge",
     )
 
+    use_pinocchio_tau_ff = LaunchConfiguration("use_pinocchio_tau_ff")
+    use_pinocchio_tau_ff_launch_arg = DeclareLaunchArgument(
+        name="use_pinocchio_tau_ff",
+        default_value="false",
+        description="是否启用 Pinocchio 定基重力前馈（RQ-025，随 can_bridge 一起启动）",
+    )
+
     use_status_led = LaunchConfiguration("use_status_led")
     use_status_led_launch_arg = DeclareLaunchArgument(
         name="use_status_led",
@@ -237,6 +244,10 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare("trotbot_can_bridge"), "launch", "can_bridge.launch.py"])
         ),
+        launch_arguments={
+            "use_pinocchio_tau_ff": use_pinocchio_tau_ff,
+            "description_file": description_file,
+        }.items(),
         condition=IfCondition(use_can_bridge),
     )
 
@@ -270,6 +281,7 @@ def generate_launch_description():
         use_sim_time_launch_arg,
         has_imu_launch_arg,
         use_can_bridge_launch_arg,
+        use_pinocchio_tau_ff_launch_arg,
         use_status_led_launch_arg,
         use_teleop_launch_arg,
         use_joystick_launch_arg,

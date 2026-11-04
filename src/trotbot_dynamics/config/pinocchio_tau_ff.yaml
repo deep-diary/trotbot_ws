@@ -1,0 +1,12 @@
+/**:
+  ros__parameters:
+    joint_states_topic: /joint_states_feedback
+    output_topic: /model_tau_ff
+    # 计算/发布频率（Hz）
+    publish_hz: 50.0
+    # 反馈超过该时长未更新则停止发布（下游按超时回落到查表/总线偏置）
+    input_timeout_s: 0.2
+    # 模型来源：launch 通过 xacro 生成后注入 robot_description；
+    # urdf_file 仅用于手工调试普通 .urdf（二选一，robot_description 优先）
+    robot_description: ""
+    urdf_file: ""

@@ -422,6 +422,44 @@ ros2 param set /motor_protocol_node tau_ff_nominal_nm "[0.0, 0.0, 0.0, 0.0, 0.0,
 
 说明：`tau_ff_nominal_nm` **必须恰好 12 个数**。仅改 YAML 默认值需重启节点；在线修改只影响当前进程。
 
+### 模型前馈：Pinocchio 重力补偿（RQ-025，默认关闭）
+
+`trotbot_dynamics/pinocchio_tau_ff_node` 用 URDF 建立**定基**模型，按 `/joint_states_feedback` 的 12 关节角计算 `g(q)`，发布 `/model_tau_ff`（`sensor_msgs/JointState`，仅 `name` + `effort`，URDF 符号）。`motor_protocol_node` 订阅后按 `tau_signs` / `pinocchio_tau_ff_scale` 转换并写入 MIT `tau_ff`。
+
+**一键启用（随 can_bridge 启动）：**
+
+```bash
+ros2 launch trotbot trotbot_basic.launch.py \
+  use_can_bridge:=true \
+  use_pinocchio_tau_ff:=true \
+  pinocchio_tau_ff_scale:=0.2
+```
+
+也可单独启动模型节点，再在线切换合并模式：
+
+```bash
+ros2 launch trotbot_dynamics pinocchio_tau_ff.launch.py
+ros2 param set /motor_protocol_node pinocchio_tau_ff_mode replace
+```
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `pinocchio_tau_ff_mode` | `off` | `off` / `replace`（替代查表）/ `add`（叠加查表，可能双计重力） |
+| `pinocchio_tau_ff_topic` | `/model_tau_ff` | 模型前馈话题 |
+| `pinocchio_tau_ff_scale` | `0.5` | 总增益，建议 <1 |
+| `pinocchio_tau_ff_timeout_s` | `0.2` | 模型数据超时后回落查表/总线偏置 |
+| `pinocchio_tau_ff_ramp_s` | `1.0` | 门禁打开后的力矩斜坡 |
+| `tau_signs` | YAML 显式 12 维 | URDF τ → 电机 τ 的符号，**必须静力验证** |
+
+**符号与增益验证（实机）：**
+
+1. 空载/趴姿，`pinocchio_tau_ff_scale=0.2`、`mode=replace`，观察各关节误差与机体高度；
+2. 若某关节误差立即变大，单独翻转该关节 `tau_signs[idx]`（每次只改一路）；
+3. 符号确认后按 `0.2 → 0.35 → 0.5` 提升，对比站立/慢走的 `MIT tracking abs_err(rad)` 均值与最大值；
+4. 运行中结束 `pinocchio_tau_ff_node`，确认日志出现 `model tau_ff stale/invalid, fallback ...` 且力矩回到查表/总线偏置。
+
+说明：首版只做定基、仅重力项（`v=0`）；模型损坏/关节缺失时节点直接 FATAL 退出，不会静默输出错误力矩。URDF 通过 launch 的 `xacro` 生成，不依赖 `robot_state_publisher`。
+
 ### 启动平滑与发送限位（新增）
 
 `control_gains.yaml` 新增了两类安全参数：
