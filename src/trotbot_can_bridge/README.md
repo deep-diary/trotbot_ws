@@ -447,6 +447,7 @@ ros2 param set /motor_protocol_node pinocchio_tau_ff_mode replace
 | `pinocchio_tau_ff_mode` | `off` | `off` / `replace`（替代查表）/ `add`（叠加查表，可能双计重力） |
 | `pinocchio_tau_ff_topic` | `/model_tau_ff` | 模型前馈话题 |
 | `pinocchio_tau_ff_scale` | `0.5` | 总增益，建议 <1 |
+| `pinocchio_tau_ff_gain` | 12×`1.0` | 每关节增益（`tau = gain_i * sign_i * g_i * scale`），用于补偿 URDF 腿质量/质心差异 |
 | `pinocchio_tau_ff_timeout_s` | `0.2` | 模型数据超时后回落查表/总线偏置 |
 | `pinocchio_tau_ff_ramp_s` | `1.0` | 门禁打开后的力矩斜坡 |
 | `tau_signs` | YAML 显式 12 维 | URDF τ → 电机 τ 的符号，**必须静力验证** |

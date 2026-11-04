@@ -1,18 +1,18 @@
 /**:
   ros__parameters:
-    kp: 50.0
-    kd: 2.5
+    kp: 100.0
+    kd: 4.0
     default_velocity: 0.0
     default_tau_ff: 0.0
 
     # --- 规划位置差分速度前馈：v_ff = clamp(scale * d/dt(q_cmd), ±velocity_ff_max_rad_s) ---
     # q_cmd 为平滑后实际下发的 CHAMP 关节角，v_ff 按 joint_signs 映射到 MIT 域后填入 MIT velocity 字段；
     # 关闭时 velocity 字段仍为 default_velocity，行为与旧版完全一致
-    enable_velocity_ff: false
+    enable_velocity_ff: true
     # 整体比例系数（1.0=直接用差分速度；0.7 更保守）
-    velocity_ff_scale: 1.0
+    velocity_ff_scale: 0.7
     # 电机侧绝对上限（rad/s，MIT 编码再受 ProtocolCodec::kVMax(50) 约束）
-    velocity_ff_max_rad_s: 8.0
+    velocity_ff_max_rad_s: 6.0
     # 一阶低通截止频率（Hz），<=0 关闭滤波；CHAMP 指令约 50Hz，建议 8~15（上游 200Hz 时可用 15~25）
     velocity_ff_lpf_hz: 10.0
     # 是否把 dq_ff 填进 /mit_motor_position_rad 的 velocity 字段（验证/绘图用）

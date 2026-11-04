@@ -493,7 +493,7 @@ def fit(args):
     print("\n# ---- paste into control_gains.yaml (RQ-025) ----")
     print(f"pinocchio_tau_ff_scale: {scale:.4f}")
     print("tau_signs: [" + ", ".join(f"{s:+.1f}" for s in tau_signs) + "]")
-    print("# optional per-joint gain (requires node support; current node uses global scale)")
+    print("# per-joint gain (consumed by motor_protocol_node)")
     print("pinocchio_tau_ff_gain: ["
           + ", ".join(
               f"{item['gain']:.4f}" if item["reliable"] else "1.0000"
