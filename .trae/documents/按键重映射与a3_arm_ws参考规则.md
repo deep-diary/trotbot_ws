@@ -137,7 +137,7 @@
 - [docs/trotbot/架构说明.md](file:///home/cat/trotbot_ws/docs/trotbot/架构说明.md#L77-L79)：状态机按键描述更新。
 - [docs/trotbot/软件需求清单.md](file:///home/cat/trotbot_ws/docs/trotbot/软件需求清单.md#L161)：按键约定与 RQ-024 触发键改为 L1+R1。
 - [docs/trotbot/README.md](file:///home/cat/trotbot_ws/docs/trotbot/README.md#L17)：上电/下电按键摘要。
-- 根 [README.md](file:///home/cat/trotbot_ws/README.md#L199-L203)：2a-1 手柄等效说明。
+- [docs/trotbot/遥控与电源启停.md](file:///home/cat/trotbot_ws/docs/trotbot/%E9%81%A5%E6%8E%A7%E4%B8%8E%E7%94%B5%E6%BA%90%E5%90%AF%E5%81%9C.md)：手柄等效与 `power_sequence` 指令语义（原根 README 2a-1）。
 - [docs/trotbot/开发问题跟踪.md](file:///home/cat/trotbot_ws/docs/trotbot/开发问题跟踪.md)：追加一条本次按键重映射记录（现象/变更/验证/结论）。
 
 ## 四、决策与假设

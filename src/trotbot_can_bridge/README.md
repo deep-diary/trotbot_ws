@@ -46,6 +46,7 @@ sudo apt-get install -y can-utils
 - **`R3`**（右摇杆按下，索引 **`button_r3`**，默认 12）**短按**：下电 `shutdown`（回 idle `SoftProne` 后 `Disable`）；`Running` / `ProneHold` / 启动过程（`Precheck`/`EnableInit`/`SoftStand`）均生效，**唯一下电入口**
 - **`L1 + R1`** 长按（未按 Share）**`motor_init_longpress_s`**（默认 3 s）：**唯一设零入口**，仅未上电 **`Idle`** 且门禁关时生效——`set_zero`（当前姿态=机械零位）→ 写 `zero_sta(0x7029)=1`（即 -180°~180°）→ CMD 0x16 保存 flash → CMD 0x11 回读校验（12/12）。**必须在零位工装姿态（底部垫高、机身水平）下操作**；**写后需断电重启生效**。只想改断电位置域、不动零位时设 `motor_init_do_set_zero: false`
 - `Options` / `Share + Options` 手柄入口**已取消**；无手柄时仍可用话题 `/power_sequence/command` 的 `set_zero` / `motor_init`（仅 `Idle` 且门禁关；勿与脚本 **`zero`** 并发）
+- **过温保护**（`enable_thermal_protection`，默认 true）：直接消费 **`/can_rx_frames`** 里 **`0x18`**/**`0x02`** 反馈温度（`data[6..7]`，0.1 °C）。任一路新鲜温度 ≥ **`thermal_limit_c`**（默认 100 °C）并持续 **`thermal_debounce_s`**（默认 0.5 s）即执行与 **`R3`** 完全一致的路径（`SoftProne` → `Disable` → `Idle`；`ProneHold` 直接 `Disable`），随后**锁存**：`Idle` 按 `L3`、话题 `start`、`ProneHold` 按 `□` 均被忽略，直到所有有效温度回落到 **`thermal_recover_c`**（默认 80 °C）以下才解锁（仍须人工按 `L3`）。过期反馈（`thermal_fresh_timeout_s`，默认 2 s）不参与判定
 
 ### 无电机使能的安全抓包模式（推荐先联调）
 
@@ -77,7 +78,7 @@ send_mit_hold_in_startup: false
 
 - `start`：`Idle` 上电流程；**`ProneHold`** 时再次站起（`SoftStand -> Running`）
 - `prone`：仅 **`Running`** → `SoftProne` → **`ProneHold`**（不发 Reset）
-- `shutdown`：`ProneHold` 直接 `Disable`；其余允许态先 `SoftProne` 再 `Disable`（见根 `README.md` 2a-1 表）
+- `shutdown`：`ProneHold` 直接 `Disable`；其余允许态先 `SoftProne` 再 `Disable`（见 [`docs/trotbot/遥控与电源启停.md`](../../docs/trotbot/遥控与电源启停.md) 指令语义表）
 - `set_zero`：十二电机机械零位（同上 gate）；非 Idle 拒绝
 - `motor_init`：一次性电机初始化（写 `zero_sta=1` → 保存 → 回读）；非 Idle/门禁开时拒绝
 
@@ -577,7 +578,7 @@ MASTER_REPORT=0 bash scripts/el05_motor_cansend.sh init
 
 ### 与其它文档的关系
 
-仓库根目录 **`README.md`** 里「**2b) cansend：电机主动上报**」一节给出的示例 **`0x1800000D`** 对应 **主 CAN_ID=0**；本脚本默认跟随 **`protocol_motor.h` 的 0xFD**。若实机仅一种配置能通，以 **`candump`** 核对后再固定环境变量。
+仓库 **`docs/trotbot/CAN配置与报文调试.md`** 里「`cansend`：电机主动上报」一节给出的示例 **`0x1800000D`** 对应 **主 CAN_ID=0**；本脚本默认跟随 **`protocol_motor.h` 的 0xFD**。若实机仅一种配置能通，以 **`candump`** 核对后再固定环境变量。
 
 ### 开机自动拉起 CAN（systemd）
 

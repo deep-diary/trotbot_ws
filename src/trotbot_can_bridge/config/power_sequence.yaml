@@ -87,6 +87,16 @@
     require_feedback_before_enable: true
     motor_feedback_fresh_timeout_s: 1.0
 
+    # --- 过温保护（等效按 R3：软趴 -> 失能 -> Idle）---
+    # 任一路有效反馈温度 >= thermal_limit_c 并持续 thermal_debounce_s 后触发一次；
+    # 触发后锁存，屏蔽 L3/start 上电，直到所有有效温度 <= thermal_recover_c 才解锁（仍需人工按 L3）。
+    enable_thermal_protection: true
+    thermal_limit_c: 100.0
+    thermal_recover_c: 80.0
+    thermal_debounce_s: 0.5
+    # 超过该秒数没有 0x18/0x02 反馈的电机视为无效，不参与判定
+    thermal_fresh_timeout_s: 2.0
+
     # 主动上报（通信类型 24 / CAN ID 0x18）：与 0x02 反馈同数据域，motor_protocol 统一解析；上电无查询反馈时 RViz 仍可刷新。
     # 下电 Disable 仅发失能，不关闭主动上报，便于 RViz 在全生命周期内仍能看到实际关节（关上报请用 el05_motor_cansend.sh reset 等）
     enable_active_report_in_startup: true

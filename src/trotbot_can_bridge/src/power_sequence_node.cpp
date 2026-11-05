@@ -98,6 +98,19 @@ public:
     require_feedback_before_enable_ = this->declare_parameter<bool>("require_feedback_before_enable", true);
     motor_feedback_fresh_timeout_s_ =
       this->declare_parameter<double>("motor_feedback_fresh_timeout_s", 1.0);
+
+    enable_thermal_protection_ = this->declare_parameter<bool>("enable_thermal_protection", true);
+    thermal_limit_c_ = this->declare_parameter<double>("thermal_limit_c", 100.0);
+    thermal_recover_c_ = this->declare_parameter<double>("thermal_recover_c", 80.0);
+    thermal_debounce_s_ = this->declare_parameter<double>("thermal_debounce_s", 0.5);
+    thermal_fresh_timeout_s_ = this->declare_parameter<double>("thermal_fresh_timeout_s", 2.0);
+    if (thermal_recover_c_ >= thermal_limit_c_) {
+      RCLCPP_WARN(
+        this->get_logger(), "thermal_recover_c=%.1f >= thermal_limit_c=%.1f invalid, fallback to %.1f",
+        thermal_recover_c_, thermal_limit_c_, thermal_limit_c_ * 0.8);
+      thermal_recover_c_ = thermal_limit_c_ * 0.8;
+    }
+
     enable_active_report_in_startup_ = this->declare_parameter<bool>("enable_active_report_in_startup", true);
     active_report_hz_ = this->declare_parameter<double>("active_report_hz", 10.0);
     active_report_master_id_ = this->declare_parameter<int>("active_report_master_id", -1);
@@ -233,10 +246,11 @@ private:
       return;
     }
 
-    // 1) 缓存电机反馈角（MIT 域 rad）：供上电「按当前反馈保持」与反馈新鲜度校验
+    // 1) 缓存电机反馈角（MIT 域 rad）与温度：供上电「按当前反馈保持」、反馈新鲜度校验与过温保护
     if (const auto fb = ProtocolCodec::DecodeFeedback(frame.value()); fb.has_value()) {
       if (static_cast<size_t>(fb->motor_id) < last_feedback_angle_rad_.size()) {
         last_feedback_angle_rad_[fb->motor_id] = fb->current_angle;
+        last_feedback_temp_c_[fb->motor_id] = fb->current_temp;
         last_feedback_stamp_ns_[fb->motor_id] = this->now().nanoseconds();
       }
     }
@@ -278,6 +292,13 @@ private:
       return;
     }
     if (command == "start") {
+      if (thermal_latched_) {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "ignore command=start: thermal protection latched (motor=%d was %.1f C, need <= %.1f C)",
+          thermal_hot_motor_id_, thermal_hot_temp_c_, thermal_recover_c_);
+        return;
+      }
       if (state_ == SequenceState::Idle) {
         use_stand_resume_for_softstand_ = false;
         EnterState(SequenceState::Precheck);
@@ -376,9 +397,21 @@ private:
       return;
     }
 
+    // 过温保护：等效 R3，最高优先级；触发当 tick 直接接管
+    if (UpdateThermalProtection(dt)) {
+      return;
+    }
+
     if (state_ == SequenceState::Idle) {
       // 上电唯一入口：L3 短按 → Precheck → EnableInit → SoftStand → Running
       if (l3_edge) {
+        if (thermal_latched_) {
+          RCLCPP_WARN(
+            this->get_logger(),
+            "joy L3 ignored: thermal protection latched (motor=%d was %.1f C, need <= %.1f C)",
+            thermal_hot_motor_id_, thermal_hot_temp_c_, thermal_recover_c_);
+          return;
+        }
         RCLCPP_WARN(this->get_logger(), "joy L3 short press: power on / enable");
         use_stand_resume_for_softstand_ = false;
         EnterState(SequenceState::Precheck);
@@ -401,6 +434,14 @@ private:
 
     if (state_ == SequenceState::ProneHold) {
       if (square_edge) {
+        if (thermal_latched_) {
+          RCLCPP_WARN(
+            this->get_logger(),
+            "joy Square ignored: thermal protection latched (motor=%d was %.1f C, need <= %.1f C)",
+            thermal_hot_motor_id_, thermal_hot_temp_c_, thermal_recover_c_);
+          TickState(dt);
+          return;
+        }
         RCLCPP_WARN(this->get_logger(), "joy Square short press: stand up (SoftStand)");
         use_stand_resume_for_softstand_ = false;
         EnterState(SequenceState::SoftStand);
@@ -453,7 +494,7 @@ private:
           SetGateOpen(true);
           const double alpha = stand_duration_s_ > 1e-6 ? std::min(1.0, elapsed_in_state_s_ / stand_duration_s_) : 1.0;
           const double z_end = use_stand_resume_for_softstand_ ? stand_resume_z_ : stand_z_;
-          const double z = prone_z_ + alpha * (z_end - prone_z_);
+          const double z = prone_z_ + SmoothStep(alpha) * (z_end - prone_z_);
           PublishHoldPose(z);
           if (alpha >= 0.999) {
             EnterState(SequenceState::Running);
@@ -463,7 +504,7 @@ private:
       case SequenceState::SoftProne: {
           SetGateOpen(true);
           const double alpha = prone_duration_s_ > 1e-6 ? std::min(1.0, elapsed_in_state_s_ / prone_duration_s_) : 1.0;
-          const double z = soft_prone_z0_ + alpha * (prone_z_ - soft_prone_z0_);
+          const double z = soft_prone_z0_ + SmoothStep(alpha) * (prone_z_ - soft_prone_z0_);
           PublishHoldPose(z);
           if (alpha >= 0.999) {
             if (soft_prone_then_disable_) {
@@ -499,6 +540,101 @@ private:
       default:
         break;
     }
+  }
+
+  /// 扫描反馈缓存，返回最高有效温度（°C）；无有效数据返回 -1.0
+  double MaxFreshMotorTempC(int * motor_id_out)
+  {
+    double max_temp = -1.0;
+    int max_id = -1;
+    const int64_t now_ns = this->now().nanoseconds();
+    for (size_t id = 0; id < last_feedback_temp_c_.size(); ++id) {
+      if (last_feedback_stamp_ns_[id] <= 0) {
+        continue;
+      }
+      const double age_s = static_cast<double>(now_ns - last_feedback_stamp_ns_[id]) / 1e9;
+      if (age_s > thermal_fresh_timeout_s_) {
+        continue;
+      }
+      if (last_feedback_temp_c_[id] > max_temp) {
+        max_temp = last_feedback_temp_c_[id];
+        max_id = static_cast<int>(id);
+      }
+    }
+    if (motor_id_out) {
+      *motor_id_out = max_id;
+    }
+    return max_temp;
+  }
+
+  /// 与 R3 完全等价的下电路径：软趴 -> 失能 -> Idle
+  void TriggerThermalShutdown()
+  {
+    switch (state_) {
+      case SequenceState::Running:
+      case SequenceState::Precheck:
+      case SequenceState::EnableInit:
+      case SequenceState::SoftStand:
+        BeginSoftProne(true);
+        break;
+      case SequenceState::SoftProne:
+        // 已在趴下途中：不重新锚定 z0（避免高度跳变），仅升级为「趴完再失能」
+        pending_start_after_prone_ = false;
+        use_stand_resume_for_softstand_ = false;
+        soft_prone_then_disable_ = true;
+        break;
+      case SequenceState::ProneHold:
+        EnterState(SequenceState::Disable);
+        break;
+      case SequenceState::Idle:
+      case SequenceState::Disable:
+      case SequenceState::Fault:
+      default:
+        break;
+    }
+  }
+
+  /// 过温判定 + 锁存/滞回。返回 true 表示本 tick 已触发（调用方应立即 return）
+  bool UpdateThermalProtection(double dt)
+  {
+    if (!enable_thermal_protection_) {
+      return false;
+    }
+    int max_id = -1;
+    const double max_temp = MaxFreshMotorTempC(&max_id);
+
+    if (thermal_latched_) {
+      // 所有有效温度都回落到恢复阈值以下才解锁；无有效数据时保持锁存（保守）
+      if (max_temp >= 0.0 && max_temp <= thermal_recover_c_) {
+        thermal_latched_ = false;
+        thermal_over_s_ = 0.0;
+        RCLCPP_WARN(
+          this->get_logger(),
+          "thermal protection cleared: max temp %.1f C <= %.1f C; press L3 to power on again",
+          max_temp, thermal_recover_c_);
+      }
+      return false;
+    }
+
+    if (max_temp >= thermal_limit_c_) {
+      thermal_over_s_ += dt;
+      if (thermal_over_s_ < thermal_debounce_s_) {
+        return false;
+      }
+      thermal_latched_ = true;
+      thermal_hot_motor_id_ = max_id;
+      thermal_hot_temp_c_ = max_temp;
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "thermal protection TRIGGERED: motor=%d temp=%.1f C >= %.1f C; "
+        "perform R3-equivalent safe-park -> disable (state=%s)",
+        max_id, max_temp, thermal_limit_c_, StateName(state_));
+      TriggerThermalShutdown();
+      return true;
+    }
+
+    thermal_over_s_ = 0.0;
+    return false;
   }
 
   void BeginSoftProne(bool then_disable)
@@ -549,6 +685,14 @@ private:
   double ClampTrackedZ0(double raw) const
   {
     return std::clamp(raw, track_z_clamp_min_, track_z_clamp_max_);
+  }
+
+  /// S 曲线：s(0)=0, s(1)=1, s'(0)=s'(1)=0，避免起/止时刻高度速度阶跃
+  /// （速度前馈会把这个阶跃放大成 kd 力矩冲击）。
+  static double SmoothStep(double alpha)
+  {
+    const double a = std::clamp(alpha, 0.0, 1.0);
+    return a * a * (3.0 - 2.0 * a);
   }
 
   void EnterState(SequenceState next)
@@ -1101,6 +1245,15 @@ private:
   bool send_mit_hold_in_startup_{true};
   bool require_feedback_before_enable_{true};
   double motor_feedback_fresh_timeout_s_{1.0};
+  bool enable_thermal_protection_{true};
+  double thermal_limit_c_{100.0};
+  double thermal_recover_c_{80.0};
+  double thermal_debounce_s_{0.5};
+  double thermal_fresh_timeout_s_{2.0};
+  double thermal_over_s_{0.0};      // 连续超限累计时间
+  bool thermal_latched_{false};     // 锁存：置位后禁止上电
+  int thermal_hot_motor_id_{-1};    // 最近一次触发电机（日志用）
+  double thermal_hot_temp_c_{0.0};
   bool enable_active_report_in_startup_{true};
   double active_report_hz_{10.0};
   int active_report_master_id_{-1};
@@ -1141,8 +1294,9 @@ private:
   double init_hold_s_{0.0};
   bool init_latch_{false};
 
-  // 电机反馈缓存（按 motor_id 索引，ID ≤ 63）：MIT 域 rad
+  // 电机反馈缓存（按 motor_id 索引，ID ≤ 63）：MIT 域 rad + 温度 °C
   std::array<double, 64> last_feedback_angle_rad_{};
+  std::array<double, 64> last_feedback_temp_c_{};
   std::array<int64_t, 64> last_feedback_stamp_ns_{};
 
   bool track_body_pose_height_{true};

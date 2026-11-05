@@ -199,6 +199,11 @@ public:
     joint_offsets_rad_ = this->declare_parameter<std::vector<double>>(
       "joint_offsets_rad", std::vector<double>(12, 0.0));
 
+    // 指令侧补偿（CHAMP 域，12 维）：只加在下发目标上，不改变反馈映射/joint_offsets_rad。
+    // 用于站立平衡等静态补偿，例如后膝 53/63 加 -0.02 rad（更弯曲一点）。
+    joint_cmd_offsets_rad_ = this->declare_parameter<std::vector<double>>(
+      "joint_cmd_offsets_rad", std::vector<double>(12, 0.0));
+
     const double off_hip = this->declare_parameter<double>("joint_offset_hip_rad", 0.0);
     const double off_thigh = this->declare_parameter<double>("joint_offset_thigh_rad", 0.0);
     const double off_calf = this->declare_parameter<double>("joint_offset_calf_rad", 0.0);
@@ -219,6 +224,11 @@ public:
         "joint_signs/joint_offsets_rad size mismatch, reset to 12 defaults.");
       joint_signs_ = std::vector<double>(12, 1.0);
       joint_offsets_rad_ = std::vector<double>(12, 0.0);
+    }
+    if (joint_cmd_offsets_rad_.size() != 12) {
+      RCLCPP_WARN(
+        this->get_logger(), "joint_cmd_offsets_rad size != 12, reset to zeros.");
+      joint_cmd_offsets_rad_ = std::vector<double>(12, 0.0);
     }
     if (tau_ff_nominal_nm_.size() != 12) {
       RCLCPP_WARN(this->get_logger(), "tau_ff_nominal_nm size != 12, padding/truncating.");
@@ -519,6 +529,21 @@ private:
         }
         tau_ff_nominal_nm_.assign(v.begin(), v.end());
         RCLCPP_WARN(this->get_logger(), "Runtime param: tau_ff_nominal_nm updated (12 doubles)");
+      } else if (name == "joint_cmd_offsets_rad") {
+        if (p.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY) {
+          out.successful = false;
+          out.reason = "joint_cmd_offsets_rad must be double[]";
+          return out;
+        }
+        const auto v = p.as_double_array();
+        if (v.size() != 12) {
+          out.successful = false;
+          out.reason = "joint_cmd_offsets_rad must have 12 elements";
+          return out;
+        }
+        joint_cmd_offsets_rad_.assign(v.begin(), v.end());
+        RCLCPP_WARN(
+          this->get_logger(), "Runtime param: joint_cmd_offsets_rad updated (12 doubles)");
       } else if (name == "pinocchio_tau_ff_mode") {
         if (p.get_type() != rclcpp::ParameterType::PARAMETER_STRING) {
           out.successful = false;
@@ -734,7 +759,9 @@ private:
         return;
       }
     }
-    const double champ_limited = ClampJointCommand(idx, champ_position_raw);
+    const double champ_cmd =
+      champ_position_raw + (idx < joint_cmd_offsets_rad_.size() ? joint_cmd_offsets_rad_[idx] : 0.0);
+    const double champ_limited = ClampJointCommand(idx, champ_cmd);
     const double champ_smoothed = SmoothJointCommand(idx, champ_limited);
     const double mapped_position_raw = joint_signs_[idx] * champ_smoothed + joint_offsets_rad_[idx];
     const double mapped_position = ClampMotorCommand(idx, mapped_position_raw);
@@ -1637,6 +1664,7 @@ private:
   double max_tx_rate_per_motor_hz_{60.0};
   std::vector<double> joint_signs_;
   std::vector<double> joint_offsets_rad_;
+  std::vector<double> joint_cmd_offsets_rad_;
   bool publish_mit_mapped_{false};
   std::string mit_mapped_topic_;
   rclcpp::Publisher<JointState>::SharedPtr mapped_positions_pub_;

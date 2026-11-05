@@ -144,4 +144,4 @@ flowchart LR
 | [`../image/PS4 按键分布.png`](../image/PS4%20按键分布.png) | 手柄示意图与红圈下标 |
 | [`src/champ_teleop/docs/PS4_JOY_MAPPING_zh.md`](../../src/champ_teleop/docs/PS4_JOY_MAPPING_zh.md) | `champ_teleop` 详细映射与参数 |
 | [`src/trotbot_can_bridge/config/power_sequence.yaml`](../../src/trotbot_can_bridge/config/power_sequence.yaml) | 启停、**motor_init**（L1+R1）与 **R3** 失能参数 |
-| 根目录 [`README.md`](../../README.md) §2a-1 | `power_sequence` 话题语义表 |
+| [`遥控与电源启停.md`](./遥控与电源启停.md) | `power_sequence` 话题语义与完整按键表 |
