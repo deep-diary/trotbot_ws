@@ -128,6 +128,7 @@ bash install/trotbot_can_bridge/share/trotbot_can_bridge/scripts/el05_motor_cans
 | `zero_sta_save` | 参数保存（通信类型22，掉电保留） |
 | `zero_sta_apply` | 一键执行：`zero_sta_set` → `zero_sta_save` → `zero_sta_read` |
 | `check` | 快速链路自检：逐个电机发送 `set_zero` 并等待反馈帧（CMD=2） |
+| `set_id` | 设置单个电机的 CAN_ID（通信类型7，`ID=(7<<24)\|(NEW_ID<<16)\|(0xFD<<8)\|CUR_ID`），需 `CUR_ID`/`NEW_ID`，用 `IFACE` 指定电机当前所在总线 |
 | `ping` | 仅打印每个电机将使用的 **接口名**（不发送） |
 
 ### 接口分配（默认）
@@ -697,3 +698,105 @@ source install/setup.bash
 ```bash
 ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true rviz:=true
 ```
+
+---
+
+## 命名姿态（idle / home）与按键语义
+
+`power_sequence_node` 支持两组命名姿态，存于
+[`config/named_poses.yaml`](config/named_poses.yaml)（12 关节角，单位 rad，
+CHAMP 关节域，顺序同 `DogMapper::kChampJointNames`）。
+
+### 按键
+
+| 按键 | 状态 | 行为 |
+|------|------|------|
+| **L3 短按** | `Idle` | 上电 → 使能 → **原地保持当前姿态**（`PoseHold`），不会自动爬起 |
+| **□ 短按** | `PoseHold` / `ProneHold` / `Running` | 关节空间平滑到 **home**，到位后自动交给 CHAMP（`Running`，可摇杆行走） |
+| **○ 短按** | `PoseHold` / `Running` | 关节空间平滑到 **idle**，之后保持（`ProneHold`） |
+| **R3 短按** | `PoseHold` / `Running` / `PoseMove` | 先平滑到 **idle**，到位后失能 → `Idle` |
+| **R3 短按** | `ProneHold` | 直接失能 |
+| **L1 + R1 长按 3s** | `Idle` 且门禁关 | 设零（`set_zero` + `zero_sta=1` + 保存），不变 |
+
+话题等价入口：`start`(=L3)、`home`(=□)、`idle` / `prone`(=○)、`shutdown`(=R3)、
+`reload_poses`（重读姿态文件，无需重启）、`set_zero`、`motor_init`。
+
+### 切换是否平滑
+
+- 走**关节空间最小 jerk（五次多项式）S 曲线**，时长 = `max(pose_move_duration_s,
+  max|Δq| / pose_max_joint_speed_rad_s)`，因此幅度越大自动越慢。
+- 进入/退出姿态伺服时，`motor_protocol_node` 与 CHAMP 的 IK 输出做
+  `pose_servo_blend_duration_s`（默认 0.30s）交叉淡入淡出，不会突变。
+- 未使用 ruckig；`SmoothJointCommand` 的启动平滑与步进限制仍作为最后一道保险。
+
+### 录制姿态（推荐用脚本）
+
+```bash
+# 1) 摆好姿态、保持静止
+# 2) 录制（会打印 12 关节 rad/deg/span，span 超标会拒绝写入）
+ros2 run trotbot_can_bridge record_named_pose.py idle
+ros2 run trotbot_can_bridge record_named_pose.py home
+
+# 3) 热重载（不用重启节点）
+ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: reload_poses}"
+```
+
+> **重要**：重新做机械零位（L1+R1 `motor_init`）之后，`idle` / `home` 必须重新录制，
+> 否则姿态会整体偏一个零位偏移量。
+
+**未录制保护**：`named_poses.yaml` 里有 `idle_recorded` / `home_recorded` 两个标记，
+默认为 `false`，脚本录制成功时会自动置 `true`。未录制时节点**拒绝**运动到该姿态
+（日志 `pose move -> home REFUSED: not recorded yet`），避免用占位全 0 把腿拉直。
+
+### 开/关门禁的时序
+
+- **开门禁**：先发 `pose_servo_active=true`，等 `pose_servo_blend_s`（默认 0.30s）淡入完成
+  后才 `gate_open=true`。否则开门禁瞬间下发的是 CHAMP 的站姿 IK 目标，会出现大幅跳变
+  （实测膝部可达 ~74°）。
+- **关门禁**：失能路径（R3 / 过温 / shutdown）一律**先关 `gate_open`**，再撤 pose servo。
+  否则 0.3s 淡出期间会混入 CHAMP 站姿目标，表现为「失能前突然抬高」。
+
+### 相关参数
+
+| 参数 | 文件 | 默认 | 说明 |
+|------|------|------|------|
+| `enable_named_poses` | power_sequence.yaml | `true` | `false` 回退到旧 SoftStand/SoftProne 流程 |
+| `named_poses_file` | power_sequence.yaml | `""` | 空则用 `<share>/config/named_poses.yaml` |
+| `pose_move_duration_s` | power_sequence.yaml | `2.5` | 姿态切换基础时长 |
+| `pose_max_joint_speed_rad_s` | power_sequence.yaml | `1.2` | 关节最大速度，用于放大时长 |
+| `pose_servo_blend_s` | power_sequence.yaml | `0.30` | 与 motor_protocol 的淡入时长对齐 |
+| `enable_stand_after_home` | power_sequence.yaml | `true` | `false` 则到 home 后锁住（`PoseHold`） |
+| `enable_pose_servo` | control_gains.yaml | `true` | motor_protocol 侧姿态直通总开关 |
+| `pose_servo_blend_duration_s` | control_gains.yaml | `0.30` | 交叉淡入淡出时长 |
+
+### 髋关节限位与「是否装外壳」
+
+`pose` 目标仍会经过 `joint_cmd_min_rad` / `joint_cmd_max_rad` 限位。
+
+限值来源说明：
+
+- **URDF 不是来源**：`minidog_champ.urdf.xacro` 里 `base_*1`（髋）的 limit 是 `±3.14 rad`。
+- `control_gains.yaml` 里的 `±0.17444 rad`（≈±10°）来自 `config/minidog position.jpg`
+  的「运动范围(URDF零位)」，是**保守值**（接近装外壳时的限制）。
+- 不装外壳时髋关节实际摆动更大：自然趴地实测可达 **±22°**（±0.384 rad）。
+
+因此在 [`config/control_gains.yaml`](config/control_gains.yaml) 增加了构型开关：
+
+```yaml
+has_shell: false                    # 是否装外壳
+hip_cmd_limit_no_shell_rad: 0.44    # 无外壳时髋关节指令限位（≈±25.2°）
+```
+
+| `has_shell` | 髋关节指令限位 |
+|-------------|----------------|
+| `true` | 沿用 `joint_cmd_min_rad/max_rad` 的 `±0.17444`（±10°） |
+| `false`（默认） | 至少放宽到 `±hip_cmd_limit_no_shell_rad`（默认 ±0.44 rad ≈ ±25.2°） |
+
+实现细节：
+
+- **只放宽、不收紧**：配置里已有更大范围时不会被改小。
+- 在 `RebuildMotorLimitTable()` **之前**应用，因此 `derive_motor_limits_from_joint_cmd=true`
+  时电机域（MIT）限位会同步联动。
+- 只改指令限位，不改变反馈映射与机械零位；步态本身的髋摆动幅度仍由 gait 配置决定。
+- 改动后需**重启 `motor_protocol_node`**，启动日志会打印
+  `mechanical profile: NO shell / shell MOUNTED` 便于确认当前生效档位。

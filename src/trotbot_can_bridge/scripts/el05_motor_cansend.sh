@@ -30,6 +30,7 @@ CMD_GET_PARAM=17
 CMD_SET_PARAM=18
 CMD_SAVE_PARAM=22
 COMM_REPORT=24    # 手册通信类型 24，即十六进制 0x18（bits 28–24）
+CMD_SET_CAN_ID=7  # 设置电机 CAN_ID（立即生效）
 
 # 通信类型 24 数据（手册）：Byte6 01 开上报 / 00 关；Byte7 00
 DATA_REPORT_ON="0102030405060100"
@@ -60,6 +61,9 @@ PARAM_READ_TIMEOUT_S="${PARAM_READ_TIMEOUT_S:-0.40}"
 # 反馈过滤掩码：固定 cmd(24..28) + motor_id/master(0..15)，忽略 mode/err(16..23)
 FEEDBACK_FILTER_MASK_HEX="1F00FFFF"
 ZERO_STA_TARGET="${ZERO_STA_TARGET:-1}"
+# set_id 子命令：当前 CAN_ID / 目标 CAN_ID（1~127）
+CUR_ID="${CUR_ID:-}"
+NEW_ID="${NEW_ID:-}"
 
 # MIT 运控默认参数（与 motor_protocol_node 现网默认保持一致）
 # 物理量范围（协议侧）：
@@ -88,6 +92,7 @@ usage() {
   zero_sta_save 发送参数保存帧（通信类型 ${CMD_SAVE_PARAM}，data=${DATA_SAVE_PARAM}）
   zero_sta_apply 执行 zero_sta_set -> zero_sta_save -> zero_sta_read
   check         快速链路自检：逐个电机发 set_zero 并等待反馈帧（CMD=${CMD_FEEDBACK}）
+  set_id        设置单个电机 CAN_ID（通信类型 ${CMD_SET_CAN_ID}，需 CUR_ID / NEW_ID，可用 IFACE 指定总线）
   ping          仅打印本轮电机与接口映射（不发送）
 
 环境变量:
@@ -103,6 +108,8 @@ usage() {
   CHECK_TIMEOUT_S check 子命令等待单电机反馈超时（秒），默认 0.40
   PARAM_READ_TIMEOUT_S 参数读取等待超时（秒），默认 0.40
   ZERO_STA_TARGET zero_sta_set/zero_sta_apply 写入值（0 或 1，默认 1）
+  CUR_ID         set_id 的电机当前 CAN_ID（1~127）
+  NEW_ID         set_id 的目标 CAN_ID（1~127）
   MIT_P           MIT 目标位置 rad，默认 0
   MIT_V           MIT 目标速度 rad/s，默认 0
   MIT_KP          MIT Kp，默认 30
@@ -117,6 +124,7 @@ usage() {
   $(basename "$0") check                  # 逐个 set_zero 并等待反馈，检查 12 电机链路
   $(basename "$0") mit                    # 全部电机发 MIT（p=0,v=0,kp=30,kd=1.5,tau=0）
   IFACE=can1 MOTOR_IDS="13" MIT_P=0.2 MIT_KP=10 $(basename "$0") mit
+  CUR_ID=13 NEW_ID=53 IFACE=can1 $(basename "$0") set_id   # 把 can1 上当前 ID=13 的电机改号为 53
 EOF
 }
 
@@ -569,6 +577,40 @@ cmd_zero_sta_apply() {
   cmd_zero_sta_read
 }
 
+cmd_set_id() {
+  require_cansend
+  local cur="${CUR_ID:-}" new="${NEW_ID:-}"
+  local cur_n new_n iface idh
+  if [[ -z "$cur" || -z "$new" ]]; then
+    echo "error: set_id 需要 CUR_ID 与 NEW_ID（例如 CUR_ID=13 NEW_ID=53 IFACE=can1 $0 set_id）" >&2
+    exit 1
+  fi
+  cur_n="$(( cur + 0 ))" || { echo "error: CUR_ID 必须是整数" >&2; exit 1; }
+  new_n="$(( new + 0 ))" || { echo "error: NEW_ID 必须是整数" >&2; exit 1; }
+  if (( cur_n < 1 || cur_n > 127 || new_n < 1 || new_n > 127 )); then
+    echo "error: CUR_ID/NEW_ID 必须在 1~127（got: ${cur_n}/${new_n}）" >&2
+    exit 1
+  fi
+  if (( cur_n == new_n )); then
+    echo "error: CUR_ID 与 NEW_ID 相同（${cur_n}）" >&2
+    exit 1
+  fi
+  iface="$(iface_for_id "$cur_n")"
+  # 通信类型 7：bit28-24=0x07；bit23-16=新 CAN_ID；bit15-8=主站 ID；bit7-0=当前 CAN_ID
+  idh="$(printf '%08X' "$(( (CMD_SET_CAN_ID << 24) | (new_n << 16) | (MASTER << 8) | cur_n ))")"
+  echo "--- 设置 CAN_ID: ${cur_n} -> ${new_n} (CMD ${CMD_SET_CAN_ID}, iface=${iface}, id=${idh}) ---"
+  # 连发两帧增强可靠性；改号后该 ID 不再应答，后续帧无效
+  local i
+  for i in 1 2; do
+    cansend "$iface" "${idh}#0000000000000000" 2>/dev/null || {
+      echo "error: cansend failed (iface=${iface}, id=${idh})" >&2
+      exit 1
+    }
+    sleep_ms "$SLEEP_MS"
+  done
+  echo "done. 请用 set_id + MOTOR_IDS/读取 或 candump 复核新 ID；断电重启后再确认是否掉电保留。"
+}
+
 main() {
   case "${1:-}" in
     ""|-h|--help|help) usage; exit 0 ;;
@@ -582,6 +624,7 @@ main() {
     zero_sta_save) cmd_zero_sta_save ;;
     zero_sta_apply) cmd_zero_sta_apply ;;
     check) cmd_check ;;
+    set_id) cmd_set_id ;;
     ping) ping ;;
     *)
       echo "unknown command: $1" >&2

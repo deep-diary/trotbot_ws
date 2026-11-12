@@ -12,7 +12,7 @@
 | [docs/trotbot/CAN桥架构与话题细节.md](docs/trotbot/CAN桥架构与话题细节.md) | 双节点桥接架构、话题消息定义、发送统计日志 |
 | [docs/trotbot/CAN频率与负载.md](docs/trotbot/CAN频率与负载.md) | 轨迹频率 → CAN 帧率 / 带宽估算与调参 |
 | [docs/trotbot/模型重力前馈.md](docs/trotbot/模型重力前馈.md) | Pinocchio 重力前馈（RQ-025，默认关闭） |
-| [docs/trotbot/部署与开机自启.md](docs/trotbot/部署与开机自启.md) | systemd 重启 / 开机自启、灯带 sudo 说明 |
+| [docs/trotbot/部署与开机自启.md](docs/trotbot/部署与开机自启.md) | systemd 重启 / 开机自启（由 `main.sh` 托管） |
 | [src/trotbot/本地运行指南.md](src/trotbot/本地运行指南.md) | 安装、编译、CHAMP 补丁、排障 |
 | [src/trotbot_can_bridge/README.md](src/trotbot_can_bridge/README.md) | 电机脚本、MIT 调参、协议细节 |
 

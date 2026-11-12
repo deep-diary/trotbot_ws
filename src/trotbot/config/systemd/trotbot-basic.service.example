@@ -1,26 +1,36 @@
-# 复制到系统并启用（路径/用户名请按实机修改）：
-#   sudo cp "$(ros2 pkg prefix trotbot)/share/trotbot/config/systemd/trotbot-basic.service.example" /etc/systemd/system/trotbot-basic.service
-#   sudo nano /etc/systemd/system/trotbot-basic.service   # 改 User、WorkingDirectory、ExecStart 中的家目录与工作空间
+# 开机自启（由 main.sh 托管）。安装：
+#   sudo cp /home/cat/trotbot_ws/src/trotbot/config/systemd/trotbot-basic.service.example /etc/systemd/system/trotbot-basic.service
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now trotbot-basic.service
+#   systemctl status trotbot-basic.service --no-pager
 #
 # 说明：
-# - use_xterm:=false / rviz:=false 适合无图形、SSH 板端开机自启。
-# - use_status_led:=true 时，status_led.launch 默认 use_sudo:=true；无交互密码需 sudo NOPASSWD，
-#   或灯带用 spidev 且无须 root 时在 ExecStart 末尾追加：status_led_use_sudo:=false
-# - 键盘遥控在无 TTY 的 systemd 下通常不可用；若只需手柄，可保留 use_teleop:=true（joy 需用户在 input 组）。
+# - ExecStart/ExecStop 直接调用工作空间根目录的 main.sh：开机即按真机参数
+#   （CAN + 手柄 + 灯带，无 RViz/xterm）后台启动，与手动 ./main.sh start|stop 行为一致。
+# - 依赖 can-up.service 先把 can0/can1 拉起到 1Mbps；若你的服务名不同请自行调整。
+# - TROTBOT_HEALTH_STRICT=0：开机时电机可能尚未上电，自检不通过也保留进程，
+#   避免 systemd 反复杀掉/重启整套栈。
+# - 灯带用 spidev 时要求运行用户在 dialout 组（cat 已具备），无需 sudo。
+# - 手柄要求运行用户在 input 组（cat 已具备）。
+# - 若工作空间/用户不同，请改 User/Group/WorkingDirectory/PIDFile 与 main.sh 路径。
 
 [Unit]
-Description=TrotBot trotbot_basic bringup (ROS 2)
-After=network-online.target
+Description=TrotBot whole-body stack (via main.sh)
+After=network-online.target can-up.service
+Wants=network-online.target can-up.service
 
 [Service]
-Type=simple
-User=bot
-Group=bot
-WorkingDirectory=/home/bot/trotbot_ws
+Type=forking
+User=cat
+Group=cat
+WorkingDirectory=/home/cat/trotbot_ws
 Environment="ROS_DOMAIN_ID=0"
-ExecStart=/bin/bash -lc 'source /opt/ros/humble/setup.bash && source /home/bot/trotbot_ws/install/setup.bash && exec ros2 launch trotbot trotbot_basic.launch.py use_can_bridge:=true use_teleop:=true use_joystick:=true use_xterm:=false rviz:=false use_status_led:=true'
+Environment="TROTBOT_HEALTH_STRICT=0"
+PIDFile=/home/cat/trotbot_ws/log/trotbot_ctl/stack.pid
+ExecStart=/home/cat/trotbot_ws/main.sh start
+ExecStop=/home/cat/trotbot_ws/main.sh stop
+TimeoutStartSec=90
+TimeoutStopSec=30
 Restart=on-failure
 RestartSec=5
 

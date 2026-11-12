@@ -12,6 +12,8 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
+find_package(yaml_cpp_vendor REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 include_directories(include)
 
@@ -52,6 +54,7 @@ ament_target_dependencies(power_sequence_node
   sensor_msgs
   std_msgs
 )
+target_link_libraries(power_sequence_node yaml-cpp)
 
 add_executable(motor_monitor_node
   src/motor_monitor_node.cpp
@@ -82,6 +85,7 @@ install(DIRECTORY
 install(PROGRAMS
   scripts/el05_motor_cansend.sh
   scripts/plot_velocity_ff.py
+  scripts/record_named_pose.py
   DESTINATION share/${PROJECT_NAME}/scripts
 )
 

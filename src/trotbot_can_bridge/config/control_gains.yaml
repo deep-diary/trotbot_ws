@@ -76,6 +76,15 @@
     # URDF τ -> 电机 τ_cmd 的符号（初值同 joint_signs；必须做静力/对拉验证后固化，勿只依赖位置符号）
     tau_signs: [-1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0]
 
+    # --- 关节姿态直通（named pose）：power_sequence 直接下发 12 关节角（CHAMP 域），
+    #     与 CHAMP 的 IK 输出按 blend 交叉混合，用于「原地使能保持 / 平滑到 idle 或 home」。
+    #     blend=0 纯 CHAMP；blend=1 纯 pose。进出各用 pose_servo_blend_duration_s 淡入淡出。
+    enable_pose_servo: true
+    pose_servo_active_topic: /pose_servo/active
+    pose_servo_joint_topic: /pose_servo/joint_targets
+    pose_servo_blend_duration_s: 0.30
+    pose_servo_target_timeout_s: 0.5
+
     # 启动平滑与发送限速（减少趴姿->站立突变）
     enable_startup_smoothing: true
     startup_smoothing_duration_s: 3.0
@@ -99,6 +108,15 @@
     # 来源：config/minidog position.jpg 的“运动范围(URDF零位)”。
     # 每腿范围：hip[-0.17444, +0.17444] thigh[-2.6167, +2.6167] calf[-2.5469, -0.4884]
     use_joint_cmd_limits: true
+    # --- 机械构型开关：是否装外壳 ---
+    # 注意：URDF 里髋关节 limit 是 ±3.14 rad，下面 joint_cmd_* 的 ±0.17444 来自
+    # config/minidog position.jpg 的「运动范围(URDF零位)」，是保守值（≈外壳限位）。
+    #   has_shell: true  -> 髋关节沿用 joint_cmd_min/max_rad 的配置值（±0.17444）
+    #   has_shell: false -> 髋关节指令限位至少放宽到 ±hip_cmd_limit_no_shell_rad
+    #                      （无外壳自然趴地实测 hip 可达 ±22°，即 ±0.384 rad）
+    # 只放宽不收紧；改动后需重启节点（并在 derive_motor_limits_from_joint_cmd=true 时联动电机域限位）
+    has_shell: false
+    hip_cmd_limit_no_shell_rad: 0.44
     joint_cmd_min_rad: [-0.17444, -2.6167, -2.5469, -0.17444, -2.6167, -2.5469, -0.17444, -2.6167, -2.5469, -0.17444, -2.6167, -2.5469]
     joint_cmd_max_rad: [0.17444, 2.6167, -0.4884, 0.17444, 2.6167, -0.4884, 0.17444, 2.6167, -0.4884, 0.17444, 2.6167, -0.4884]
 

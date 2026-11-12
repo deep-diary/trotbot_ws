@@ -5,15 +5,22 @@
 #include <cstdint>
 #include <functional>
 #include <cctype>
+#include <filesystem>
+#include <iomanip>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
+
+#include <yaml-cpp/yaml.h>
 
 #include "geometry_msgs/msg/pose.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joy.hpp"
+#include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/u_int8_multi_array.hpp"
@@ -24,6 +31,7 @@
 using geometry_msgs::msg::Pose;
 using geometry_msgs::msg::Twist;
 using sensor_msgs::msg::Joy;
+using sensor_msgs::msg::JointState;
 using std_msgs::msg::Bool;
 using std_msgs::msg::String;
 using std_msgs::msg::UInt8MultiArray;
@@ -55,7 +63,26 @@ enum class SequenceState
   ProneHold = 6,
   Disable = 7,
   Fault = 8,
+  PoseHold = 9,
+  PoseMove = 10,
 };
+
+/// 命名姿态目标（PoseMove 的终点）
+enum class NamedPose
+{
+  None = 0,
+  Idle = 1,
+  Home = 2,
+};
+
+const char * NamedPoseName(NamedPose p)
+{
+  switch (p) {
+    case NamedPose::Idle: return "idle";
+    case NamedPose::Home: return "home";
+    default: return "none";
+  }
+}
 
 class PowerSequenceNode : public rclcpp::Node
 {
@@ -148,6 +175,44 @@ public:
     track_z_clamp_min_ = this->declare_parameter<double>("track_z_clamp_min", -0.5);
     track_z_clamp_max_ = this->declare_parameter<double>("track_z_clamp_max", 0.5);
 
+    // --- 命名姿态（idle/home）与关节空间切换 ---
+    enable_named_poses_ = this->declare_parameter<bool>("enable_named_poses", true);
+    named_poses_file_ = this->declare_parameter<std::string>("named_poses_file", "");
+    pose_move_duration_s_ = this->declare_parameter<double>("pose_move_duration_s", 2.5);
+    pose_max_joint_speed_rad_s_ =
+      this->declare_parameter<double>("pose_max_joint_speed_rad_s", 1.2);
+    pose_servo_active_topic_ = this->declare_parameter<std::string>(
+      "pose_servo_active_topic", "/pose_servo/active");
+    pose_servo_joint_topic_ = this->declare_parameter<std::string>(
+      "pose_servo_joint_topic", "/pose_servo/joint_targets");
+    enable_stand_after_home_ = this->declare_parameter<bool>("enable_stand_after_home", true);
+    pose_servo_blend_s_ = this->declare_parameter<double>("pose_servo_blend_s", 0.30);
+    feedback_joint_states_topic_ = this->declare_parameter<std::string>(
+      "feedback_joint_states_topic", "/joint_states_feedback");
+    if (pose_servo_blend_s_ < 1e-3) {
+      pose_servo_blend_s_ = 0.30;
+    }
+    if (pose_max_joint_speed_rad_s_ < 1e-3) {
+      pose_max_joint_speed_rad_s_ = 1.2;
+    }
+    if (pose_move_duration_s_ < 1e-3) {
+      pose_move_duration_s_ = 2.5;
+    }
+    idle_pose_.fill(std::numeric_limits<double>::quiet_NaN());
+    home_pose_.fill(std::numeric_limits<double>::quiet_NaN());
+    hold_pose_.fill(std::numeric_limits<double>::quiet_NaN());
+    pose_q0_.fill(std::numeric_limits<double>::quiet_NaN());
+    pose_q1_.fill(std::numeric_limits<double>::quiet_NaN());
+    if (enable_named_poses_) {
+      LoadNamedPoses();
+      if (!poses_loaded_) {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "named poses unavailable, fallback to legacy SoftStand/SoftProne behavior");
+        enable_named_poses_ = false;
+      }
+    }
+
     const int can_tx_depth = this->declare_parameter<int>("can_tx_frames_qos_depth", 4000);
     rclcpp::QoS tx_qos(static_cast<size_t>(std::max(1, can_tx_depth)));
     tx_qos.reliable();
@@ -155,6 +220,12 @@ public:
     pose_pub_ = this->create_publisher<Pose>(body_pose_topic_, 10);
     cmd_vel_pub_ = this->create_publisher<Twist>(cmd_vel_topic_, 10);
     gate_pub_ = this->create_publisher<Bool>(gate_topic_, rclcpp::QoS(1).reliable().transient_local());
+    if (enable_named_poses_) {
+      pose_servo_active_pub_ = this->create_publisher<Bool>(
+        pose_servo_active_topic_, rclcpp::QoS(1).reliable().transient_local());
+      pose_servo_joint_pub_ = this->create_publisher<JointState>(pose_servo_joint_topic_, 10);
+      PublishPoseServoActive(false);
+    }
     // 与 status_led 等 transient_local 订阅对齐：晚启动节点仍可收到最后一帧状态（否则易卡在 Idle 灯语）。
     state_pub_ = this->create_publisher<String>(state_topic_, rclcpp::QoS(1).reliable().transient_local());
     if (!set_zero_event_topic_.empty()) {
@@ -173,6 +244,11 @@ public:
       body_pose_sub_ = this->create_subscription<Pose>(
         body_pose_topic_, rclcpp::QoS(10),
         std::bind(&PowerSequenceNode::OnBodyPose, this, std::placeholders::_1));
+    }
+    if (enable_named_poses_) {
+      feedback_js_sub_ = this->create_subscription<JointState>(
+        feedback_joint_states_topic_, rclcpp::SensorDataQoS(),
+        std::bind(&PowerSequenceNode::OnFeedbackJointStates, this, std::placeholders::_1));
     }
 
     timer_ = this->create_wall_timer(
@@ -285,10 +361,23 @@ private:
     }
     if (
       motor_init_active_ &&
-      (command == "start" || command == "prone" || command == "shutdown"))
+      (command == "start" || command == "prone" || command == "shutdown" ||
+      command == "home" || command == "idle"))
     {
       RCLCPP_WARN(
         this->get_logger(), "ignore command=%s: motor_init in progress", command.c_str());
+      return;
+    }
+    if (command == "reload_poses") {
+      if (!enable_named_poses_) {
+        RCLCPP_WARN(this->get_logger(), "ignore command=reload_poses: enable_named_poses=false");
+        return;
+      }
+      poses_loaded_ = false;
+      LoadNamedPoses();
+      RCLCPP_WARN(
+        this->get_logger(), "command=reload_poses -> %s",
+        poses_loaded_ ? "OK" : "FAILED (keep previous poses)");
       return;
     }
     if (command == "start") {
@@ -303,7 +392,13 @@ private:
         use_stand_resume_for_softstand_ = false;
         EnterState(SequenceState::Precheck);
       } else if (state_ == SequenceState::ProneHold) {
-        EnterState(SequenceState::SoftStand);
+        if (enable_named_poses_) {
+          StartPoseMove(NamedPose::Home);
+        } else {
+          EnterState(SequenceState::SoftStand);
+        }
+      } else if (state_ == SequenceState::PoseHold) {
+        StartPoseMove(NamedPose::Home);
       } else if (state_ == SequenceState::SoftProne && !soft_prone_then_disable_) {
         // 趴下动画未结束就发 start：原先会被忽略，导致“要发两次才站起来”
         pending_start_after_prone_ = true;
@@ -315,11 +410,40 @@ private:
       }
       return;
     }
-    if (command == "prone") {
-      if (state_ == SequenceState::Running) {
-        BeginSoftProne(false);
+    if (command == "home") {
+      if (thermal_latched_) {
+        RCLCPP_WARN(this->get_logger(), "ignore command=home: thermal protection latched");
+        return;
+      }
+      if (!enable_named_poses_) {
+        RCLCPP_WARN(this->get_logger(), "ignore command=home: enable_named_poses=false");
+        return;
+      }
+      if (
+        state_ == SequenceState::PoseHold || state_ == SequenceState::ProneHold ||
+        state_ == SequenceState::Running)
+      {
+        StartPoseMove(NamedPose::Home);
       } else {
-        RCLCPP_WARN(this->get_logger(), "ignore command=prone in state=%s", StateName(state_));
+        RCLCPP_WARN(this->get_logger(), "ignore command=home in state=%s", StateName(state_));
+      }
+      return;
+    }
+    if (command == "idle" || command == "prone") {
+      if (!enable_named_poses_) {
+        if (command == "prone" && state_ == SequenceState::Running) {
+          BeginSoftProne(false);
+        } else {
+          RCLCPP_WARN(this->get_logger(), "ignore command=%s in state=%s",
+            command.c_str(), StateName(state_));
+        }
+        return;
+      }
+      if (state_ == SequenceState::Running || state_ == SequenceState::PoseHold) {
+        StartPoseMove(NamedPose::Idle);
+      } else {
+        RCLCPP_WARN(this->get_logger(), "ignore command=%s in state=%s",
+          command.c_str(), StateName(state_));
       }
       return;
     }
@@ -327,6 +451,30 @@ private:
       if (state_ == SequenceState::ProneHold) {
         EnterState(SequenceState::Disable);
         return;
+      }
+      if (enable_named_poses_) {
+        if (
+          state_ == SequenceState::PoseHold || state_ == SequenceState::PoseMove ||
+          state_ == SequenceState::Running)
+        {
+          pose_move_then_disable_ = true;
+          if (state_ == SequenceState::PoseMove && pose_target_ == NamedPose::Idle) {
+            return;  // 已在去 idle 的路上，到点后失能
+          }
+          if (!StartPoseMove(NamedPose::Idle)) {
+            pose_move_then_disable_ = false;
+            EnterState(SequenceState::Disable);
+          }
+          return;
+        }
+        if (
+          state_ == SequenceState::Idle || state_ == SequenceState::Precheck ||
+          state_ == SequenceState::EnableInit)
+        {
+          PublishPoseServoActive(false);
+          EnterState(SequenceState::Disable);
+          return;
+        }
       }
       if (
         state_ == SequenceState::Idle || state_ == SequenceState::Precheck ||
@@ -345,7 +493,8 @@ private:
     }
     RCLCPP_WARN(
       this->get_logger(),
-      "unknown command=%s (supported: start/prone/shutdown/set_zero/motor_init)", command.c_str());
+      "unknown command=%s (supported: start/home/idle/prone/shutdown/reload_poses/set_zero/motor_init)",
+      command.c_str());
   }
 
   bool ButtonOn(int idx) const
@@ -422,13 +571,66 @@ private:
 
     if (state_ == SequenceState::Running) {
       if (circle_edge) {
-        RCLCPP_WARN(this->get_logger(), "joy Circle short press: go to idle (SoftProne)");
-        BeginSoftProne(false);
+        if (enable_named_poses_) {
+          RCLCPP_WARN(this->get_logger(), "joy Circle: go to named pose idle");
+          StartPoseMove(NamedPose::Idle);
+        } else {
+          RCLCPP_WARN(this->get_logger(), "joy Circle short press: go to idle (SoftProne)");
+          BeginSoftProne(false);
+        }
       } else if (r3_edge) {
-        RCLCPP_WARN(
-          this->get_logger(), "joy R3 short press: safe-park (SoftProne) then disable");
-        BeginSoftProne(true);
+        if (enable_named_poses_) {
+          RCLCPP_WARN(this->get_logger(), "joy R3: go to named pose idle, then disable");
+          pose_move_then_disable_ = true;
+          if (!StartPoseMove(NamedPose::Idle)) {
+            pose_move_then_disable_ = false;
+            EnterState(SequenceState::Disable);
+          }
+        } else {
+          RCLCPP_WARN(
+            this->get_logger(), "joy R3 short press: safe-park (SoftProne) then disable");
+          BeginSoftProne(true);
+        }
       }
+      return;
+    }
+
+    if (state_ == SequenceState::PoseHold) {
+      if (square_edge) {
+        if (thermal_latched_) {
+          RCLCPP_WARN(
+            this->get_logger(),
+            "joy Square ignored: thermal protection latched (motor=%d was %.1f C, need <= %.1f C)",
+            thermal_hot_motor_id_, thermal_hot_temp_c_, thermal_recover_c_);
+          TickState(dt);
+          return;
+        }
+        RCLCPP_WARN(this->get_logger(), "joy Square: go to named pose home");
+        StartPoseMove(NamedPose::Home);
+      } else if (circle_edge) {
+        RCLCPP_WARN(this->get_logger(), "joy Circle: go to named pose idle");
+        StartPoseMove(NamedPose::Idle);
+      } else if (r3_edge) {
+        RCLCPP_WARN(this->get_logger(), "joy R3: go to named pose idle, then disable");
+        pose_move_then_disable_ = true;
+        if (!StartPoseMove(NamedPose::Idle)) {
+          pose_move_then_disable_ = false;
+          EnterState(SequenceState::Disable);
+        }
+      }
+      TickState(dt);
+      return;
+    }
+
+    if (state_ == SequenceState::PoseMove) {
+      if (r3_edge && !pose_move_then_disable_) {
+        RCLCPP_WARN(this->get_logger(), "joy R3 during PoseMove: retarget idle, then disable");
+        pose_move_then_disable_ = true;
+        if (pose_target_ != NamedPose::Idle) {
+          StartPoseMove(NamedPose::Idle);
+        }
+      }
+      TickState(dt);
       return;
     }
 
@@ -442,9 +644,14 @@ private:
           TickState(dt);
           return;
         }
-        RCLCPP_WARN(this->get_logger(), "joy Square short press: stand up (SoftStand)");
-        use_stand_resume_for_softstand_ = false;
-        EnterState(SequenceState::SoftStand);
+        if (enable_named_poses_) {
+          RCLCPP_WARN(this->get_logger(), "joy Square: go to named pose home");
+          StartPoseMove(NamedPose::Home);
+        } else {
+          RCLCPP_WARN(this->get_logger(), "joy Square short press: stand up (SoftStand)");
+          use_stand_resume_for_softstand_ = false;
+          EnterState(SequenceState::SoftStand);
+        }
       } else if (r3_edge) {
         RCLCPP_WARN(this->get_logger(), "joy R3 short press: disable from ProneHold");
         EnterState(SequenceState::Disable);
@@ -457,11 +664,18 @@ private:
       state_ == SequenceState::SoftStand || state_ == SequenceState::EnableInit ||
       state_ == SequenceState::Precheck)
     {
-      // R3 在启动过程中同样可中止：SoftProne -> Disable（与话题 shutdown 一致）
+      // R3 在启动过程中同样可中止
       if (r3_edge) {
-        RCLCPP_WARN(
-          this->get_logger(), "joy R3 short press: abort startup (SoftProne) then disable");
-        BeginSoftProne(true);
+        if (enable_named_poses_) {
+          RCLCPP_WARN(
+            this->get_logger(), "joy R3: abort startup (gate stays closed), disable");
+          PublishPoseServoActive(false);
+          EnterState(SequenceState::Disable);
+        } else {
+          RCLCPP_WARN(
+            this->get_logger(), "joy R3 short press: abort startup (SoftProne) then disable");
+          BeginSoftProne(true);
+        }
         return;
       }
     }
@@ -485,9 +699,17 @@ private:
             break;
           }
         }
-        PublishHoldPose(prone_z_);
-        if (elapsed_in_state_s_ >= init_hold_duration_s_) {
-          EnterState(SequenceState::SoftStand);
+        if (enable_named_poses_) {
+          // 原地保持：不写 prone_z、不进 SoftStand，等 □ / ○ / R3
+          PublishTwistZero();
+          if (elapsed_in_state_s_ >= init_hold_duration_s_) {
+            BeginPoseHold();
+          }
+        } else {
+          PublishHoldPose(prone_z_);
+          if (elapsed_in_state_s_ >= init_hold_duration_s_) {
+            EnterState(SequenceState::SoftStand);
+          }
         }
         break;
       case SequenceState::SoftStand: {
@@ -520,15 +742,35 @@ private:
         break;
       case SequenceState::ProneHold:
         SetGateOpen(true);
-        PublishHoldPose(prone_z_);
+        if (enable_named_poses_ && pose_servo_active_) {
+          PublishPoseServoTargets(hold_pose_);
+          PublishTwistZero();
+        } else {
+          PublishHoldPose(prone_z_);
+        }
+        break;
+      case SequenceState::PoseHold:
+        // 必须等 pose servo 的交叉淡入完成（blend=1）再开门禁，
+        // 否则开门禁瞬间下发的是 CHAMP 的站姿目标，会产生大幅跳变。
+        if (elapsed_in_state_s_ >= pose_servo_blend_s_) {
+          SetGateOpen(true);
+        }
+        PublishPoseServoTargets(hold_pose_);
+        PublishTwistZero();
+        break;
+      case SequenceState::PoseMove:
+        TickPoseMove(dt);
         break;
       case SequenceState::Disable:
+        // 必须先关门禁、再撤 pose servo：否则 0.3s 淡出期间会把 CHAMP 站姿目标
+        // 混进输出，表现为「失能前突然抬高」。
+        SetGateOpen(false);
         if (!disable_sent_) {
           // 不下发「上报 OFF」：shutdown 后 RViz/观测仍依赖 0x18 刷新关节态；需要关上报请用手动脚本 reset
           SendCmdAll(kCmdReset);
+          PublishPoseServoActive(false);
           disable_sent_ = true;
         }
-        SetGateOpen(false);
         PublishHoldPose(prone_z_);
         if (elapsed_in_state_s_ >= 0.25) {
           EnterState(SequenceState::Idle);
@@ -584,6 +826,15 @@ private:
         soft_prone_then_disable_ = true;
         break;
       case SequenceState::ProneHold:
+        EnterState(SequenceState::Disable);
+        break;
+      case SequenceState::PoseHold:
+      case SequenceState::PoseMove:
+        // 已被 pose servo 接管：直接失能，不再走 CHAMP 趴下路径
+        RCLCPP_WARN(
+          this->get_logger(), "thermal shutdown in %s: pose servo off, go Disable", StateName(state_));
+        SetGateOpen(false);
+        PublishPoseServoActive(false);
         EnterState(SequenceState::Disable);
         break;
       case SequenceState::Idle:
@@ -695,6 +946,332 @@ private:
     return a * a * (3.0 - 2.0 * a);
   }
 
+  // --- 命名姿态（idle/home）---
+
+  /// 最小 jerk（五次多项式）：s(0)=0, s(1)=1, 一阶/二阶导在两端均为 0
+  static double MinimumJerk(double alpha)
+  {
+    const double a = std::clamp(alpha, 0.0, 1.0);
+    return a * a * a * (10.0 - 15.0 * a + 6.0 * a * a);
+  }
+
+  /// 从 YAML 读取 idle_joints / home_joints；失败返回 false 并保持 poses_loaded_=false
+  void LoadNamedPoses()
+  {
+    std::string path = named_poses_file_;
+    if (path.empty()) {
+      path = ResolveDefaultPoseFile();
+    }
+    if (path.empty()) {
+      RCLCPP_WARN(this->get_logger(), "named_poses_file empty and default not found");
+      return;
+    }
+    try {
+      YAML::Node root = YAML::LoadFile(path);
+      YAML::Node params = root["/**"] && root["/**"]["ros__parameters"] ?
+        root["/**"]["ros__parameters"] : root;
+      auto read = [&](const char * key, std::array<double, 12> & out) -> bool {
+          if (!params[key]) {
+            RCLCPP_WARN(this->get_logger(), "%s: missing key '%s'", path.c_str(), key);
+            return false;
+          }
+          const auto seq = params[key];
+          if (!seq.IsSequence() || seq.size() != out.size()) {
+            RCLCPP_WARN(
+              this->get_logger(), "%s: '%s' must be a 12-element sequence", path.c_str(), key);
+            return false;
+          }
+          for (size_t i = 0; i < out.size(); ++i) {
+            const double v = seq[i].as<double>();
+            if (!std::isfinite(v)) {
+              RCLCPP_WARN(
+                this->get_logger(), "%s: '%s'[%zu] is not finite", path.c_str(), key, i);
+              return false;
+            }
+            out[i] = v;
+          }
+          return true;
+        };
+      auto read_bool = [&](const char * key) -> bool {
+          if (!params[key]) {
+            return false;
+          }
+          try {
+            return params[key].as<bool>();
+          } catch (const std::exception &) {
+            return false;
+          }
+        };
+      const bool idle_ok = read("idle_joints", idle_pose_);
+      const bool home_ok = read("home_joints", home_pose_);
+      if (!idle_ok || !home_ok) {
+        return;
+      }
+      idle_recorded_ = read_bool("idle_recorded");
+      home_recorded_ = read_bool("home_recorded");
+      poses_loaded_ = true;
+      named_poses_file_ = path;
+      LogNamedPoses(path);
+    } catch (const std::exception & e) {
+      RCLCPP_WARN(this->get_logger(), "load named poses failed (%s): %s", path.c_str(), e.what());
+    }
+  }
+
+  std::string ResolveDefaultPoseFile() const
+  {
+    // 优先安装目录（本工作区为 symlink-install，等价于源码 config）
+    const char * share_hint = "/home/cat/trotbot_ws/install/trotbot_can_bridge/share/"
+      "trotbot_can_bridge/config/named_poses.yaml";
+    if (std::filesystem::exists(share_hint)) {
+      return share_hint;
+    }
+    const char * src_hint = "/home/cat/trotbot_ws/src/trotbot_can_bridge/config/named_poses.yaml";
+    if (std::filesystem::exists(src_hint)) {
+      return src_hint;
+    }
+    return {};
+  }
+
+  void LogNamedPoses(const std::string & path)
+  {
+    auto fmt = [](const std::array<double, 12> & q) {
+        std::ostringstream os;
+        for (size_t i = 0; i < q.size(); ++i) {
+          os << (i == 0 ? "" : ", ") << std::fixed << std::setprecision(1)
+             << (q[i] * 57.29577951308232);
+        }
+        return os.str();
+      };
+    RCLCPP_WARN(
+      this->get_logger(),
+      "named poses loaded from %s (idle_recorded=%d, home_recorded=%d)\n"
+      "  idle(deg)=[%s]\n  home(deg)=[%s]",
+      path.c_str(), idle_recorded_ ? 1 : 0, home_recorded_ ? 1 : 0,
+      fmt(idle_pose_).c_str(), fmt(home_pose_).c_str());
+    if (!idle_recorded_ || !home_recorded_) {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "unrecorded pose(s) will REFUSE motion: %s%s%s",
+        idle_recorded_ ? "" : "idle ",
+        home_recorded_ ? "" : "home ",
+        "(run record_named_pose.py <pose>)");
+    }
+  }
+
+  void PublishPoseServoActive(bool on)
+  {
+    pose_servo_active_ = on;
+    if (!pose_servo_active_pub_) {
+      return;
+    }
+    Bool msg;
+    msg.data = on;
+    pose_servo_active_pub_->publish(msg);
+  }
+
+  void PublishPoseServoTargets(const std::array<double, 12> & q)
+  {
+    if (!pose_servo_joint_pub_) {
+      return;
+    }
+    JointState msg;
+    msg.header.stamp = this->now();
+    msg.name.reserve(DogMapper::kChampJointNames.size());
+    for (const char * n : DogMapper::kChampJointNames) {
+      msg.name.emplace_back(n);
+    }
+    msg.position.assign(q.begin(), q.end());
+    pose_servo_joint_pub_->publish(msg);
+  }
+
+  void PublishTwistZero()
+  {
+    Twist tw;
+    tw.linear.x = 0.0;
+    tw.linear.y = 0.0;
+    tw.linear.z = 0.0;
+    tw.angular.x = 0.0;
+    tw.angular.y = 0.0;
+    tw.angular.z = 0.0;
+    cmd_vel_pub_->publish(tw);
+  }
+
+  void OnFeedbackJointStates(const JointState::SharedPtr msg)
+  {
+    const size_t n = std::min(msg->position.size(), static_cast<size_t>(12));
+    if (n < 12) {
+      return;
+    }
+    bool mapped_by_name = false;
+    if (msg->name.size() >= 12) {
+      std::array<double, 12> tmp{};
+      bool all_found = true;
+      for (size_t i = 0; i < 12; ++i) {
+        bool found = false;
+        for (size_t k = 0; k < msg->name.size(); ++k) {
+          if (msg->name[k] == DogMapper::kChampJointNames[i]) {
+            tmp[i] = msg->position[k];
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          all_found = false;
+          break;
+        }
+      }
+      if (all_found) {
+        champ_feedback_ = tmp;
+        mapped_by_name = true;
+      }
+    }
+    if (!mapped_by_name) {
+      for (size_t i = 0; i < 12; ++i) {
+        champ_feedback_[i] = msg->position[i];
+      }
+    }
+    champ_feedback_stamp_ns_ = this->now().nanoseconds();
+    has_champ_feedback_ = true;
+  }
+
+  /// 当前 CHAMP 域 12 关节角；反馈超时则 ok=false
+  std::array<double, 12> CurrentChampPose(bool * ok) const
+  {
+    const int64_t now_ns = this->now().nanoseconds();
+    const int64_t fresh_ns = static_cast<int64_t>(motor_feedback_fresh_timeout_s_ * 1e9);
+    const bool fresh = has_champ_feedback_ && champ_feedback_stamp_ns_ > 0 &&
+      (now_ns - champ_feedback_stamp_ns_) <= fresh_ns;
+    if (ok != nullptr) {
+      *ok = fresh;
+    }
+    return champ_feedback_;
+  }
+
+  /// L3 上电收尾：原地保持当前姿态（不写 prone_z，不进 SoftStand）
+  void BeginPoseHold()
+  {
+    bool ok = false;
+    const auto q = CurrentChampPose(&ok);
+    if (!ok) {
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "pose hold aborted: /joint_states_feedback stale (>%.2fs)", motor_feedback_fresh_timeout_s_);
+      EnterState(SequenceState::Idle);
+      return;
+    }
+    hold_pose_ = q;
+    PublishPoseServoTargets(hold_pose_);
+    PublishPoseServoActive(true);
+    // 不在这里开门禁：等 PoseHold 里 blend 完成后再开，避免首帧走 CHAMP 站姿目标
+    PublishTwistZero();
+    RCLCPP_WARN(this->get_logger(), "pose hold: enabled in place, holding current pose");
+    EnterState(SequenceState::PoseHold);
+  }
+
+  bool StartPoseMove(NamedPose target)
+  {
+    if (!enable_named_poses_ || !poses_loaded_) {
+      RCLCPP_WARN(this->get_logger(), "pose move ignored: named poses unavailable");
+      return false;
+    }
+    // 未录制的姿态拒绝运动：占位全 0 会把腿拉直，比不动更危险
+    const bool recorded = (target == NamedPose::Idle) ? idle_recorded_ : home_recorded_;
+    if (!recorded) {
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "pose move -> %s REFUSED: not recorded yet (run: record_named_pose.py %s)",
+        NamedPoseName(target), NamedPoseName(target));
+      return false;
+    }
+    const std::array<double, 12> & q1 =
+      (target == NamedPose::Idle) ? idle_pose_ : home_pose_;
+    bool ok = false;
+    const auto q0 = CurrentChampPose(&ok);
+    if (!ok) {
+      RCLCPP_ERROR(
+        this->get_logger(),
+        "pose move ignored: /joint_states_feedback stale (>%.2fs)",
+        motor_feedback_fresh_timeout_s_);
+      return false;
+    }
+    double max_delta = 0.0;
+    for (size_t i = 0; i < q0.size(); ++i) {
+      max_delta = std::max(max_delta, std::fabs(q1[i] - q0[i]));
+    }
+    pose_q0_ = q0;
+    pose_q1_ = q1;
+    pose_target_ = target;
+    pose_move_dur_ = std::max(pose_move_duration_s_, max_delta / pose_max_joint_speed_rad_s_);
+    pose_move_t_ = -pose_servo_blend_s_;
+
+    PublishPoseServoTargets(pose_q0_);
+    PublishPoseServoActive(true);
+    // 门禁由 TickPoseMove 在淡入完成后打开
+    PublishTwistZero();
+    RCLCPP_WARN(
+      this->get_logger(), "pose move -> %s: max_delta=%.3f rad dur=%.2fs",
+      NamedPoseName(target), max_delta, pose_move_dur_);
+    EnterState(SequenceState::PoseMove);
+    return true;
+  }
+
+  void TickPoseMove(double dt)
+  {
+    pose_move_t_ += dt;
+    PublishTwistZero();
+
+    if (pose_move_t_ < 0.0) {
+      // 淡入阶段：先锁住起点，门禁保持关闭，避免开门禁瞬间走 CHAMP 站姿目标
+      PublishPoseServoTargets(pose_q0_);
+      return;
+    }
+    SetGateOpen(true);
+    const double alpha = pose_move_dur_ > 1e-6 ? pose_move_t_ / pose_move_dur_ : 1.0;
+    const double s = MinimumJerk(alpha);
+    std::array<double, 12> q{};
+    for (size_t i = 0; i < q.size(); ++i) {
+      q[i] = pose_q0_[i] + s * (pose_q1_[i] - pose_q0_[i]);
+    }
+    PublishPoseServoTargets(q);
+
+    if (alpha >= 0.999) {
+      FinishPoseMove();
+    }
+  }
+
+  void FinishPoseMove()
+  {
+    const NamedPose target = pose_target_;
+    pose_target_ = NamedPose::None;
+    hold_pose_ = pose_q1_;
+    if (target == NamedPose::Idle) {
+      if (pose_move_then_disable_) {
+        pose_move_then_disable_ = false;
+        RCLCPP_WARN(this->get_logger(), "named pose idle reached; disable");
+        // 先关门禁再撤 pose servo，避免淡出期间混入 CHAMP 站姿目标
+        SetGateOpen(false);
+        PublishPoseServoActive(false);
+        EnterState(SequenceState::Disable);
+        return;
+      }
+      RCLCPP_WARN(this->get_logger(), "named pose idle reached; holding (ProneHold)");
+      EnterState(SequenceState::ProneHold);
+      return;
+    }
+    if (target == NamedPose::Home) {
+      if (enable_stand_after_home_) {
+        RCLCPP_WARN(
+          this->get_logger(), "named pose home reached; hand over to CHAMP (Running)");
+        PublishPoseServoActive(false);
+        PublishHoldPose(stand_z_);
+        EnterState(SequenceState::Running);
+      } else {
+        RCLCPP_WARN(this->get_logger(), "named pose home reached; holding (PoseHold)");
+        EnterState(SequenceState::PoseHold);
+      }
+    }
+  }
+
   void EnterState(SequenceState next)
   {
     state_ = next;
@@ -717,6 +1294,8 @@ private:
       case SequenceState::ProneHold: return "ProneHold";
       case SequenceState::Disable: return "Disable";
       case SequenceState::Fault: return "Fault";
+      case SequenceState::PoseHold: return "PoseHold";
+      case SequenceState::PoseMove: return "PoseMove";
       default: return "Unknown";
     }
   }
@@ -1333,6 +1912,37 @@ private:
   rclcpp::Subscription<String>::SharedPtr command_sub_;
   rclcpp::Subscription<UInt8MultiArray>::SharedPtr rx_sub_;
   rclcpp::Subscription<Pose>::SharedPtr body_pose_sub_;
+
+  // --- 命名姿态（idle/home）---
+  bool enable_named_poses_{true};
+  std::string named_poses_file_;
+  std::string feedback_joint_states_topic_;
+  std::string pose_servo_active_topic_;
+  std::string pose_servo_joint_topic_;
+  double pose_move_duration_s_{2.5};
+  double pose_max_joint_speed_rad_s_{1.2};
+  double pose_servo_blend_s_{0.30};
+  bool enable_stand_after_home_{true};
+  bool poses_loaded_{false};
+  bool idle_recorded_{false};
+  bool home_recorded_{false};
+  bool pose_servo_active_{false};
+  bool pose_move_then_disable_{false};
+  NamedPose pose_target_{NamedPose::None};
+  std::array<double, 12> idle_pose_{};
+  std::array<double, 12> home_pose_{};
+  std::array<double, 12> hold_pose_{};
+  std::array<double, 12> pose_q0_{};
+  std::array<double, 12> pose_q1_{};
+  double pose_move_dur_{2.5};
+  double pose_move_t_{0.0};
+  std::array<double, 12> champ_feedback_{};
+  int64_t champ_feedback_stamp_ns_{0};
+  bool has_champ_feedback_{false};
+  rclcpp::Publisher<Bool>::SharedPtr pose_servo_active_pub_;
+  rclcpp::Publisher<JointState>::SharedPtr pose_servo_joint_pub_;
+  rclcpp::Subscription<JointState>::SharedPtr feedback_js_sub_;
+
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::TimerBase::SharedPtr motor_init_timer_;
   rclcpp::TimerBase::SharedPtr verify_timer_;

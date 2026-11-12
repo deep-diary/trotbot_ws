@@ -115,3 +115,26 @@
     init_velocity: 0.0
     init_tau: 0.0
 
+    # --- 命名姿态（idle/home）与关节空间平滑切换 ---
+    # enable_named_poses=true 时：
+    #   L3                -> 原地使能并保持当前姿态（PoseHold），不自动爬起
+    #   □                 -> 从任意姿态平滑到 home，随后自动交给 CHAMP（Running，可摇杆行走）
+    #   ○                 -> 从任意姿态平滑到 idle，之后保持（ProneHold）
+    #   R3                -> 平滑到 idle 后失能
+    # enable_named_poses=false 时回退到旧的 SoftStand/SoftProne（stand_z/prone_z）流程。
+    enable_named_poses: true
+    # 空则用 <share>/config/named_poses.yaml（本工作区 symlink-install，等价 src 下的同名文件）
+    named_poses_file: ""
+    # 姿态切换基础时长（s）；实际时长会按 pose_max_joint_speed_rad_s 自动放大以满足限速
+    pose_move_duration_s: 2.5
+    pose_max_joint_speed_rad_s: 1.2
+    # 与 motor_protocol_node 的 pose_servo_blend_duration_s 对齐：进入插值前先锁住起点等淡入
+    pose_servo_blend_s: 0.30
+    # 到 home 后自动交给 CHAMP（Running）；false 则锁住 home（PoseHold）
+    enable_stand_after_home: true
+    # 姿态伺服话题（与 control_gains.yaml 中 motor_protocol_node 的配置一致）
+    pose_servo_active_topic: /pose_servo/active
+    pose_servo_joint_topic: /pose_servo/joint_targets
+    # 当前关节角来源（motor_protocol_node 发布，CHAMP 关节域）
+    feedback_joint_states_topic: /joint_states_feedback
+

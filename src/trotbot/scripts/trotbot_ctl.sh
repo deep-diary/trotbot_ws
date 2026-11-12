@@ -345,7 +345,12 @@ start_stack() {
   if [[ "${MODE}" == "real" ]]; then
     if ! check_health; then
       echo "WARN: 启动自检未通过，请查看 ${LOG_FILE} 与 CAN 接线/供电。"
-      return 1
+      # 开机自启（systemd）时设 TROTBOT_HEALTH_STRICT=0：保留后台进程，
+      # 避免电机尚未上电时自检失败导致 systemd 反复杀掉/重启整套栈。
+      if [[ "${TROTBOT_HEALTH_STRICT:-1}" == "1" ]]; then
+        return 1
+      fi
+      echo "WARN: TROTBOT_HEALTH_STRICT=0，保留已启动的后台进程。"
     fi
   fi
 }

@@ -338,6 +338,39 @@ public:
         "Publishing MIT-mapped angles (θ_mit=sign*θ_champ+offset) on '%s' (same joint order as trajectory)",
         mit_mapped_topic_.c_str());
     }
+
+    // --- 关节姿态直通（named pose）：power_sequence 直接给 12 关节角，与 CHAMP 交叉淡入 ---
+    enable_pose_servo_ = this->declare_parameter<bool>("enable_pose_servo", true);
+    pose_servo_active_topic_ = this->declare_parameter<std::string>(
+      "pose_servo_active_topic", "/pose_servo/active");
+    pose_servo_joint_topic_ = this->declare_parameter<std::string>(
+      "pose_servo_joint_topic", "/pose_servo/joint_targets");
+    pose_servo_blend_duration_s_ =
+      this->declare_parameter<double>("pose_servo_blend_duration_s", 0.30);
+    pose_servo_target_timeout_s_ =
+      this->declare_parameter<double>("pose_servo_target_timeout_s", 0.5);
+    if (pose_servo_blend_duration_s_ < 1e-3) {
+      pose_servo_blend_duration_s_ = 1e-3;
+    }
+    pose_servo_target_.fill(std::numeric_limits<double>::quiet_NaN());
+    if (enable_pose_servo_) {
+      pose_servo_active_sub_ = this->create_subscription<Bool>(
+        pose_servo_active_topic_, rclcpp::QoS(1).reliable().transient_local(),
+        std::bind(&MotorProtocolNode::OnPoseServoActive, this, std::placeholders::_1));
+      pose_servo_joint_sub_ = this->create_subscription<JointState>(
+        pose_servo_joint_topic_, rclcpp::SensorDataQoS(),
+        std::bind(&MotorProtocolNode::OnPoseServoTargets, this, std::placeholders::_1));
+      pose_servo_timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(20),
+        std::bind(&MotorProtocolNode::OnPoseServoTimer, this));
+      RCLCPP_INFO(
+        this->get_logger(),
+        "Pose servo enabled: active='%s' targets='%s' blend=%.2fs timeout=%.2fs",
+        pose_servo_active_topic_.c_str(), pose_servo_joint_topic_.c_str(),
+        pose_servo_blend_duration_s_, pose_servo_target_timeout_s_);
+    } else {
+      RCLCPP_INFO(this->get_logger(), "Pose servo disabled (enable_pose_servo=false)");
+    }
     tx_refresh_timer_ = this->create_wall_timer(
       std::chrono::milliseconds(2),
       std::bind(&MotorProtocolNode::OnTxRefreshTimer, this));
@@ -404,6 +437,11 @@ public:
       joint_mit_min_rad_ = std::vector<double>(12, ProtocolCodec::kPMin);
       joint_mit_max_rad_ = std::vector<double>(12, ProtocolCodec::kPMax);
     }
+    // 机械构型（是否装外壳）先于电机域限位推导生效
+    has_shell_ = this->declare_parameter<bool>("has_shell", false);
+    hip_cmd_limit_no_shell_rad_ =
+      this->declare_parameter<double>("hip_cmd_limit_no_shell_rad", 0.44);
+    ApplyMechanicalProfile();
     RebuildMotorLimitTable();
 
     if (!std::isfinite(velocity_ff_scale_) || velocity_ff_scale_ < 0.0) {
@@ -703,6 +741,7 @@ private:
         ++skip_power_gate_window_;
         continue;
       }
+      target = BlendPoseServo(i, target);
       SendMitFrame(route.value(), target, front_count, rear_count, &mapped_rad, &mapped_vel);
       ++total_sent;
     }
@@ -940,6 +979,77 @@ private:
       last_tx_pub_stamp_ns_.fill(0);
       ResetAllVelocityFf();
     }
+  }
+
+  // --- 关节姿态直通（named pose） ---
+
+  void OnPoseServoActive(const Bool::SharedPtr msg)
+  {
+    pose_servo_active_ = msg->data;
+    RCLCPP_WARN(
+      this->get_logger(), "pose servo %s (blend=%.2f)",
+      pose_servo_active_ ? "ON" : "OFF", pose_servo_blend_);
+  }
+
+  void OnPoseServoTargets(const JointState::SharedPtr msg)
+  {
+    if (msg->position.size() < pose_servo_target_.size()) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 2000,
+        "pose servo targets size=%zu (<12), ignored", msg->position.size());
+      return;
+    }
+    for (size_t i = 0; i < pose_servo_target_.size(); ++i) {
+      const double v = msg->position[i];
+      if (std::isfinite(v)) {
+        pose_servo_target_[i] = v;
+      }
+    }
+    pose_servo_target_stamp_ns_ = this->now().nanoseconds();
+  }
+
+  void OnPoseServoTimer()
+  {
+    const int64_t now_ns = this->now().nanoseconds();
+    double dt = pose_servo_last_tick_ns_ > 0 ?
+      static_cast<double>(now_ns - pose_servo_last_tick_ns_) * 1e-9 : 0.02;
+    pose_servo_last_tick_ns_ = now_ns;
+    dt = Clamp(dt, 1e-3, 0.2);
+
+    bool want = pose_servo_active_;
+    const bool fresh = pose_servo_target_stamp_ns_ > 0 &&
+      (static_cast<double>(now_ns - pose_servo_target_stamp_ns_) * 1e-9) <=
+      pose_servo_target_timeout_s_;
+    if (want && !fresh) {
+      if (!pose_servo_stale_warned_) {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "pose servo target stale (>%.2fs), falling back to CHAMP output",
+          pose_servo_target_timeout_s_);
+        pose_servo_stale_warned_ = true;
+      }
+      want = false;
+    } else {
+      pose_servo_stale_warned_ = false;
+    }
+
+    const double step = dt / pose_servo_blend_duration_s_;
+    pose_servo_blend_ = want ?
+      Clamp(pose_servo_blend_ + step, 0.0, 1.0) :
+      Clamp(pose_servo_blend_ - step, 0.0, 1.0);
+  }
+
+  /// CHAMP 目标与 pose servo 目标按当前 blend 交叉混合（blend=0 纯 CHAMP，=1 纯 pose）
+  double BlendPoseServo(size_t idx, double champ_target) const
+  {
+    if (!enable_pose_servo_ || pose_servo_blend_ <= 1e-3 || idx >= pose_servo_target_.size()) {
+      return champ_target;
+    }
+    const double pose = pose_servo_target_[idx];
+    if (!std::isfinite(pose)) {
+      return champ_target;
+    }
+    return (1.0 - pose_servo_blend_) * champ_target + pose_servo_blend_ * pose;
   }
 
   void OnRxFrame(const UInt8MultiArray::SharedPtr msg)
@@ -1437,6 +1547,49 @@ private:
     }
   }
 
+  /// 机械构型（是否装外壳）：
+  ///   装外壳   -> 髋关节沿用 joint_cmd_min_rad/max_rad 里的保守值（±0.17444 rad）
+  ///   不装外壳 -> 髋关节指令限位至少放宽到 ±hip_cmd_limit_no_shell_rad_（实测自然趴地可达 ±22°）
+  /// 只放宽、不收紧：已有配置更大时不会被改小。必须在 RebuildMotorLimitTable() 之前调用，
+  /// 否则 derive_motor_limits_from_joint_cmd 推导出的电机域限位不会跟着更新。
+  void ApplyMechanicalProfile()
+  {
+    static constexpr std::array<size_t, 4> kHipIdx{0, 3, 6, 9};
+    if (!use_joint_cmd_limits_) {
+      RCLCPP_WARN(
+        this->get_logger(), "mechanical profile skipped: use_joint_cmd_limits=false");
+      return;
+    }
+    if (joint_cmd_min_rad_.size() != 12 || joint_cmd_max_rad_.size() != 12) {
+      return;
+    }
+    if (has_shell_) {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "mechanical profile: shell MOUNTED, hip cmd limit kept at %.4f..%.4f rad (%.1f..%.1f deg)",
+        joint_cmd_min_rad_[0], joint_cmd_max_rad_[0],
+        joint_cmd_min_rad_[0] * 57.29577951308232, joint_cmd_max_rad_[0] * 57.29577951308232);
+      return;
+    }
+    const double lim = std::fabs(hip_cmd_limit_no_shell_rad_);
+    if (!std::isfinite(lim) || lim <= 1e-6) {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "mechanical profile: hip_cmd_limit_no_shell_rad=%.3f invalid, keep configured hip limits",
+        hip_cmd_limit_no_shell_rad_);
+      return;
+    }
+    for (const size_t i : kHipIdx) {
+      joint_cmd_min_rad_[i] = std::min(joint_cmd_min_rad_[i], -lim);
+      joint_cmd_max_rad_[i] = std::max(joint_cmd_max_rad_[i], lim);
+    }
+    RCLCPP_WARN(
+      this->get_logger(),
+      "mechanical profile: NO shell, hip cmd limit widened to %.4f..%.4f rad (%.1f..%.1f deg)",
+      joint_cmd_min_rad_[0], joint_cmd_max_rad_[0],
+      joint_cmd_min_rad_[0] * 57.29577951308232, joint_cmd_max_rad_[0] * 57.29577951308232);
+  }
+
   void RebuildMotorLimitTable()
   {
     if (!derive_motor_limits_from_joint_cmd_) {
@@ -1634,6 +1787,8 @@ private:
   double model_tau_ff_max_abs_{0.0};
   int64_t model_ff_ramp_start_ns_{0};
   bool use_joint_cmd_limits_{true};
+  bool has_shell_{false};
+  double hip_cmd_limit_no_shell_rad_{0.44};
   std::vector<double> joint_cmd_min_rad_;
   std::vector<double> joint_cmd_max_rad_;
   bool use_motor_domain_limits_{true};
@@ -1716,6 +1871,22 @@ private:
   size_t skip_max_rate_limit_window_{0};
   size_t skip_bus_disabled_window_{0};
   size_t skip_power_gate_window_{0};
+
+  // 关节姿态直通（named pose）
+  bool enable_pose_servo_{false};
+  std::string pose_servo_active_topic_;
+  std::string pose_servo_joint_topic_;
+  double pose_servo_blend_duration_s_{0.30};
+  double pose_servo_target_timeout_s_{0.5};
+  bool pose_servo_active_{false};
+  double pose_servo_blend_{0.0};
+  std::array<double, 12> pose_servo_target_{};
+  int64_t pose_servo_target_stamp_ns_{0};
+  int64_t pose_servo_last_tick_ns_{0};
+  bool pose_servo_stale_warned_{false};
+  rclcpp::Subscription<Bool>::SharedPtr pose_servo_active_sub_;
+  rclcpp::Subscription<JointState>::SharedPtr pose_servo_joint_sub_;
+  rclcpp::TimerBase::SharedPtr pose_servo_timer_;
 
   rclcpp::Subscription<JointTrajectory>::SharedPtr traj_sub_;
   rclcpp::Subscription<UInt8MultiArray>::SharedPtr rx_sub_;

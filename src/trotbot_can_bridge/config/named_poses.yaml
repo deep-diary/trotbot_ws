@@ -1,0 +1,27 @@
+/**:
+  ros__parameters:
+    # 命名姿态（单位 rad，CHAMP 关节域，与 /joint_states_feedback 同域）
+    #
+    # 关节顺序（12 维）：
+    #   base_lf1, lf1_lf2, lf2_lf3,      # 左前 髋外摆/髋俯仰/膝
+    #   base_rf1, rf1_rf2, rf2_rf3,      # 右前
+    #   base_lb1, lb1_lb2, lb2_lb3,      # 左后
+    #   base_rb1, rb1_rb2, rb2_rb3       # 右后
+    #
+    # 录制方式（推荐，避免手抄）：
+    #   ros2 run trotbot_can_bridge record_named_pose.py idle
+    #   ros2 run trotbot_can_bridge record_named_pose.py home
+    # 录完热重载：
+    #   ros2 topic pub --once /power_sequence/command std_msgs/msg/String "{data: reload_poses}"
+    #
+    # ！！重新做机械零位（L1+R1 motor_init）之后，必须重新录制这两组姿态。
+    #
+    # idle：自然趴地（无工装、无外壳）时的实测关节角
+    # home：目标站立姿态的实测关节角
+    idle_joints: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    home_joints: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    # 是否已录制。false 时节点拒绝运动到该姿态（避免用占位全 0 把腿拉直）。
+    # record_named_pose.py 写入时会自动置 true。
+    idle_recorded: false
+    home_recorded: false

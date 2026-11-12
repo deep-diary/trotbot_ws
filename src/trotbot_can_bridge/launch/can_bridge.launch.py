@@ -18,6 +18,7 @@ def generate_launch_description():
     gains_file = LaunchConfiguration("gains_file")
     bridge_file = LaunchConfiguration("bridge_file")
     power_sequence_file = LaunchConfiguration("power_sequence_file")
+    named_poses_file = LaunchConfiguration("named_poses_file")
     use_power_sequence = LaunchConfiguration("use_power_sequence")
     use_pinocchio_tau_ff = LaunchConfiguration("use_pinocchio_tau_ff")
     description_file = LaunchConfiguration("description_file")
@@ -50,6 +51,11 @@ def generate_launch_description():
         "power_sequence_file",
         default_value=PathJoinSubstitution([bridge_package, "config", "power_sequence.yaml"]),
         description="Power sequence state machine parameters",
+    )
+    declare_named_poses_file = DeclareLaunchArgument(
+        "named_poses_file",
+        default_value=PathJoinSubstitution([bridge_package, "config", "named_poses.yaml"]),
+        description="命名姿态（idle/home）参数文件，供 power_sequence_node 读取",
     )
     declare_use_power_sequence = DeclareLaunchArgument(
         "use_power_sequence",
@@ -106,7 +112,11 @@ def generate_launch_description():
         executable="power_sequence_node",
         name="power_sequence_node",
         output="screen",
-        parameters=[power_sequence_file],
+        parameters=[
+            power_sequence_file,
+            # 路径含 '/'，仍需显式声明为 str，避免 launch 按 YAML 解析类型
+            {"named_poses_file": ParameterValue(named_poses_file, value_type=str)},
+        ],
         condition=IfCondition(use_power_sequence),
     )
 
@@ -131,6 +141,7 @@ def generate_launch_description():
             declare_gains,
             declare_bridge,
             declare_power_sequence_file,
+            declare_named_poses_file,
             declare_use_power_sequence,
             declare_use_pinocchio_tau_ff,
             declare_description_file,
