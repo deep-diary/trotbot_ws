@@ -43,6 +43,33 @@ CMD="${CMD:-restart}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# ---- 清理外部注入的 LD_LIBRARY_PATH ----
+# IDE / agent / 某些桌面环境会把自身 lib 目录塞进 LD_LIBRARY_PATH，
+# 导致 ros2 CLI 与 rclpy 加载到错误版本的共享库，表现为：
+#   ros2 node list → ImportError traceback（被 2>/dev/null 吞掉后变成「节点缺失」）
+# 这里把明显不属于系统的路径剔除，只保留 ROS / 系统目录。
+sanitize_ld_library_path() {
+  local out="" p
+  local IFS=':'
+  for p in ${LD_LIBRARY_PATH:-}; do
+    [[ -z "${p}" ]] && continue
+    case "${p}" in
+      *.trae-*|*.trae-cn-server*|*/.trae/*) continue ;;
+      /snap/*) continue ;;
+    esac
+    out="${out:+${out}:}${p}"
+  done
+  printf '%s' "${out}"
+}
+if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+  _CLEAN_LD="$(sanitize_ld_library_path)"
+  if [[ "${_CLEAN_LD}" != "${LD_LIBRARY_PATH}" ]]; then
+    echo "== 已从 LD_LIBRARY_PATH 移除外部注入路径（可能是 IDE/agent 注入，会导致 ros2 崩溃）=="
+    export LD_LIBRARY_PATH="${_CLEAN_LD}"
+  fi
+  unset _CLEAN_LD
+fi
+
 # ---- 定位工作空间 ----
 if [[ -n "${TROTBOT_WS:-}" ]]; then
   WS="${TROTBOT_WS}"
@@ -257,9 +284,20 @@ check_health() {
   local missing_motors=()
   local waited=0
 
+  # 0) ros2 CLI 预检：被 LD_LIBRARY_PATH/PYTHONPATH 污染时 ros2 会直接崩，
+  #    此时绝不能误报成「节点缺失 / 电机掉线」。
+  if ! timeout 8 ros2 node list >/dev/null 2>&1; then
+    echo "== 启动自检 =="
+    echo "  ERROR: ros2 CLI 无法运行（不是电机问题）"
+    echo "         常见原因: LD_LIBRARY_PATH / PYTHONPATH 被外部程序（IDE、agent 等）污染"
+    echo "         排查: echo \$LD_LIBRARY_PATH; ros2 node list"
+    echo "         干净环境重试: env -u LD_LIBRARY_PATH bash -lc 'ros2 node list'"
+    return 1
+  fi
+
   # 启动后立即调用时节点可能还在初始化，最多等 12s
   while (( waited < 12 )); do
-    if ros2 node list 2>/dev/null | grep -qx '/motor_protocol_node'; then
+    if timeout 5 ros2 node list 2>/dev/null | grep -qx '/motor_protocol_node'; then
       break
     fi
     sleep 1
@@ -293,7 +331,28 @@ check_health() {
     echo "  电机在线: 12/12 (${EXPECTED_MOTORS[*]})"
     return 0
   fi
-  echo "  电机在线: ${total}/12，未上报: ${missing_motors[*]}"
+  echo "  电机在线: ${total}/12（来自 /motor_feedback），未上报: ${missing_motors[*]}"
+
+  # 兜底：直接抓 CAN 总线，区分「ROS 转发问题」和「电机真的没上报」
+  if command -v candump >/dev/null 2>&1; then
+    local bus_ids
+    bus_ids="$(
+      { timeout 2 candump -n 400 can0 2>/dev/null
+        timeout 2 candump -n 400 can1 2>/dev/null
+      } | awk '{print $2}' \
+        | grep -E '^1800[0-9A-F]{2}FD$' \
+        | sed -E 's/^1800([0-9A-F]{2})FD$/\1/' \
+        | while read -r h; do printf '%d\n' "0x${h}"; done \
+        | sort -n -u
+    )"
+    if [[ -z "${bus_ids}" ]]; then
+      echo "  CAN 总线复核: 两路总线均无 0x18 上报"
+      echo "  → 电机侧未上电/未接好（不是脚本问题）"
+    else
+      echo "  CAN 总线复核: 总线上实际在报的 ID: $(tr '\n' ' ' <<< "${bus_ids}")"
+      echo "  → 电机在线，但 /motor_feedback 缺数据：属 ROS 转发/订阅问题，不是电机掉线"
+    fi
+  fi
   return 1
 }
 
