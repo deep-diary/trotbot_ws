@@ -73,7 +73,9 @@
     motor_init_save_wait_ms: 500
     motor_init_read_wait_ms: 600
     # 非空则发布 motor_init_ok / motor_init_fail / motor_init_rejected / zero_sta_verify_* 事件
-    motor_init_event_topic: ""
+    # 指向 /trotbot/motor_init_event：ds4_feedback_node 订阅后给出震动反馈
+    #   成功 = 两短震(弱)；失败 = 三短震(强)；被拒绝 = 一短震(很弱)
+    motor_init_event_topic: "/trotbot/motor_init_event"
     # 上电只读自检：回读 12 路 zero_sta，不等于目标值时告警（不写参数）
     verify_zero_sta_at_launch: true
     zero_sta_verify_delay_s: 1.0

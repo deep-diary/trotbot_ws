@@ -270,6 +270,22 @@ class Ds4FeedbackNode(Node):
         self.declare_parameter("rumble_prone_weak", 0.5)
         self.declare_parameter("rumble_prone_duration_s", 0.12)
 
+        # ---- 设零（L1+R1 motor_init）事件震动 ----
+        # power_sequence_node 的 motor_init_event_topic 需指向同一话题
+        self.declare_parameter("motor_init_event_topic", "/trotbot/motor_init_event")
+        self.declare_parameter("motor_init_rumble", True)
+        # 成功：两短震（弱）
+        self.declare_parameter("motor_init_ok_weak", 0.5)
+        self.declare_parameter("motor_init_ok_duration_s", 0.08)
+        self.declare_parameter("motor_init_ok_gap_s", 0.10)
+        # 失败：三短震（强）
+        self.declare_parameter("motor_init_fail_strong", 0.85)
+        self.declare_parameter("motor_init_fail_duration_s", 0.10)
+        self.declare_parameter("motor_init_fail_gap_s", 0.15)
+        # 被拒绝（状态/门禁不满足）：单短震（很弱）
+        self.declare_parameter("motor_init_rejected_weak", 0.3)
+        self.declare_parameter("motor_init_rejected_duration_s", 0.10)
+
         # ---- state ----
         self._power_state = ""
         self._gate_open = False
@@ -334,6 +350,11 @@ class Ds4FeedbackNode(Node):
             self.create_subscription(
                 DiagnosticArray, str(self.get_parameter("diagnostics_topic").value),
                 self._on_diagnostics, 10,
+            )
+        if bool(self.get_parameter("motor_init_rumble").value):
+            self.create_subscription(
+                String, str(self.get_parameter("motor_init_event_topic").value),
+                self._on_motor_init_event, 10,
             )
         self._fb_pub = self.create_publisher(
             String, str(self.get_parameter("feedback_topic").value), 10
@@ -408,6 +429,43 @@ class Ds4FeedbackNode(Node):
                     except (TypeError, ValueError):
                         pass
         self._motor_fault = fault
+
+    def _on_motor_init_event(self, msg: String) -> None:
+        """设零（L1+R1 motor_init）结果反馈：成功两短震、失败三短震、被拒绝一短震。"""
+        payload = msg.data.strip()
+        if not payload:
+            return
+        now = time.monotonic()
+        if payload.startswith("motor_init_ok"):
+            weak = self._f("motor_init_ok_weak")
+            dur = self._f("motor_init_ok_duration_s")
+            gap = self._f("motor_init_ok_gap_s")
+            self._start_rumble(
+                [
+                    RumblePhase(0.0, dur, weak, 0.0),
+                    RumblePhase(dur + gap, dur, weak, 0.0),
+                ],
+                now,
+            )
+            self.get_logger().info(f"motor_init OK: {payload}")
+        elif payload.startswith("motor_init_fail"):
+            strong = self._f("motor_init_fail_strong")
+            dur = self._f("motor_init_fail_duration_s")
+            gap = self._f("motor_init_fail_gap_s")
+            self._start_rumble(
+                [
+                    RumblePhase(0.0, dur, 0.0, strong),
+                    RumblePhase(dur + gap, dur, 0.0, strong),
+                    RumblePhase(2.0 * (dur + gap), dur, 0.0, strong),
+                ],
+                now,
+            )
+            self.get_logger().warn(f"motor_init FAIL: {payload}")
+        elif payload.startswith("motor_init_rejected"):
+            weak = self._f("motor_init_rejected_weak")
+            dur = self._f("motor_init_rejected_duration_s")
+            self._start_rumble([RumblePhase(0.0, dur, weak, 0.0)], now)
+            self.get_logger().warn(f"motor_init REJECTED: {payload}")
 
     # ---- state derivation ----
     def _derive_class(self) -> str:

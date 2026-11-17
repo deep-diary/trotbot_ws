@@ -18,10 +18,14 @@
     #
     # idle：自然趴地（无工装、无外壳）时的实测关节角
     # home：目标站立姿态的实测关节角
-    idle_joints: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    home_joints: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    idle_joints: [-0.002110, 1.004826, -2.547092, -0.002110, 1.004058, -2.548243, -0.006713, 1.004059, -2.557065, 0.001343, 1.013649, -2.548626]
+    # home 初值：CHAMP nominal_height=0.2 的对称站姿（hip=0, thigh=0.578, calf=-1.051）。
+    # 这是 bootstrap 用的推荐值，尚未实测；狗站起来后建议用
+    #   ros2 run trotbot_can_bridge record_named_pose.py home
+    # 覆盖成实测姿态。
+    home_joints: [0.0, 0.578, -1.051, 0.0, 0.578, -1.051, 0.0, 0.578, -1.051, 0.0, 0.578, -1.051]
 
     # 是否已录制。false 时节点拒绝运动到该姿态（避免用占位全 0 把腿拉直）。
     # record_named_pose.py 写入时会自动置 true。
-    idle_recorded: false
-    home_recorded: false
+    idle_recorded: true
+    home_recorded: true

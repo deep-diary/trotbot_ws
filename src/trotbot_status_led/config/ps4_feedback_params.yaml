@@ -48,3 +48,18 @@ ds4_feedback_node:
     rumble_fault_gap_s: 0.35
     rumble_prone_weak: 0.5
     rumble_prone_duration_s: 0.12
+
+    # 设零（L1+R1 motor_init）结果震动
+    # 需 trotbot_can_bridge 的 power_sequence.yaml 里
+    #   motor_init_event_topic: "/trotbot/motor_init_event"
+    # 成功 = 两短震(弱)；失败 = 三短震(强)；被拒绝(状态/门禁不满足) = 一短震(很弱)
+    motor_init_rumble: true
+    motor_init_event_topic: "/trotbot/motor_init_event"
+    motor_init_ok_weak: 0.5
+    motor_init_ok_duration_s: 0.08
+    motor_init_ok_gap_s: 0.10
+    motor_init_fail_strong: 0.85
+    motor_init_fail_duration_s: 0.10
+    motor_init_fail_gap_s: 0.15
+    motor_init_rejected_weak: 0.3
+    motor_init_rejected_duration_s: 0.10

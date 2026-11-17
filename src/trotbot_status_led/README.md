@@ -157,6 +157,21 @@ ros2 topic echo /trotbot/ps4/feedback
 
 参数文件：[`config/ps4_feedback_params.yaml`](config/ps4_feedback_params.yaml)（振动强度/时长、行走阈值与亮度、调试心跳周期等）。
 
+### 设零（L1+R1）震动反馈
+
+`ds4_feedback_node` 订阅 `motor_init_event_topic`（默认 `/trotbot/motor_init_event`），
+由 `power_sequence_node` 发布设零结果：
+
+| 事件 | 震动 |
+|------|------|
+| `motor_init_ok` | 两短震（弱，默认 0.5，各 0.08s） |
+| `motor_init_fail` | 三短震（强，默认 0.85，各 0.10s） |
+| `motor_init_rejected` | 一短震（很弱，默认 0.3） |
+
+需要在 [`trotbot_can_bridge/config/power_sequence.yaml`](../trotbot_can_bridge/config/power_sequence.yaml)
+中把 `motor_init_event_topic` 指向同一话题（仓库默认已配好）。
+可用 `motor_init_rumble: false` 关闭，或用 `motor_init_ok_weak` / `motor_init_fail_strong` 等参数调强度。
+
 ## 降级语义
 
 - **GPIO 打开失败**或 **stub 构建**：节点保持运行，**不打断**运动栈；仅 WARN 一次，无灯带输出。

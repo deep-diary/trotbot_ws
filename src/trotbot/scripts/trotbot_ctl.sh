@@ -113,6 +113,12 @@ else
 fi
 set -u
 
+# ---- 清理可能被污染启动的 ros2 daemon ----
+# daemon 会继承启动时的环境；若曾用坏掉的 LD_LIBRARY_PATH 启动过，
+# 之后 `ros2 node list` 会一直返回异常（!rclpy.ok()）或只返回部分节点。
+# 这里主动停掉，让后续命令用当前干净环境重启 daemon。
+ros2 daemon stop >/dev/null 2>&1 || true
+
 # ---- 运行文件 ----
 CTL_DIR="${WS}/log/trotbot_ctl"
 PID_FILE="${CTL_DIR}/stack.pid"
@@ -286,7 +292,8 @@ check_health() {
 
   # 0) ros2 CLI 预检：被 LD_LIBRARY_PATH/PYTHONPATH 污染时 ros2 会直接崩，
   #    此时绝不能误报成「节点缺失 / 电机掉线」。
-  if ! timeout 8 ros2 node list >/dev/null 2>&1; then
+  # 统一用 --no-daemon，绕开可能残留的坏 daemon 缓存
+  if ! timeout 15 ros2 node list --no-daemon >/dev/null 2>&1; then
     echo "== 启动自检 =="
     echo "  ERROR: ros2 CLI 无法运行（不是电机问题）"
     echo "         常见原因: LD_LIBRARY_PATH / PYTHONPATH 被外部程序（IDE、agent 等）污染"
@@ -297,14 +304,14 @@ check_health() {
 
   # 启动后立即调用时节点可能还在初始化，最多等 12s
   while (( waited < 12 )); do
-    if timeout 5 ros2 node list 2>/dev/null | grep -qx '/motor_protocol_node'; then
+    if timeout 8 ros2 node list --no-daemon 2>/dev/null | grep -qx '/motor_protocol_node'; then
       break
     fi
     sleep 1
     waited=$((waited + 1))
   done
 
-  nodes="$(ros2 node list 2>/dev/null || true)"
+  nodes="$(timeout 15 ros2 node list --no-daemon 2>/dev/null || true)"
   for n in can_transport_node motor_protocol_node power_sequence_node; do
     grep -qx "/${n}" <<< "${nodes}" || missing_nodes+=("${n}")
   done
@@ -317,10 +324,13 @@ check_health() {
   fi
 
   local pub
-  pub="$(ros2 topic info /joint_states_feedback 2>/dev/null | awk '/Publisher count:/{print $3}')"
+  pub="$(timeout 12 ros2 topic info --no-daemon --spin-time 1.0 /joint_states_feedback 2>/dev/null \
+    | awk '/Publisher count:/{print $3}')"
   echo "  /joint_states_feedback 发布者: ${pub:-0}"
 
-  ids="$(timeout 3 ros2 topic echo /motor_feedback 2>/dev/null \
+  # 注意：topic echo 加 --no-daemon 在 Humble 下收不到数据（实测），
+  # 这里用 daemon 模式；脚本启动时已停掉旧 daemon，会以干净环境重建。
+  ids="$(timeout 8 ros2 topic echo --spin-time 1.0 /motor_feedback 2>/dev/null \
     | grep -o 'motor=[0-9]*' | sed 's/motor=//' | sort -n -u || true)"
   total="$(printf '%s\n' "${ids}" | awk 'NF{n++} END{print n+0}')"
   for mid in "${EXPECTED_MOTORS[@]}"; do
@@ -349,8 +359,16 @@ check_health() {
       echo "  CAN 总线复核: 两路总线均无 0x18 上报"
       echo "  → 电机侧未上电/未接好（不是脚本问题）"
     else
+      local bus_missing=()
+      for mid in "${EXPECTED_MOTORS[@]}"; do
+        grep -qx "${mid}" <<< "${bus_ids}" || bus_missing+=("${mid}")
+      done
       echo "  CAN 总线复核: 总线上实际在报的 ID: $(tr '\n' ' ' <<< "${bus_ids}")"
-      echo "  → 电机在线，但 /motor_feedback 缺数据：属 ROS 转发/订阅问题，不是电机掉线"
+      if [[ ${#bus_missing[@]} -eq 0 ]]; then
+        echo "  → 12 路在总线上都在报，但 /motor_feedback 缺数据：属 ROS 转发/订阅问题，不是电机掉线"
+      else
+        echo "  → 总线上也缺: ${bus_missing[*]} → 这些电机确实未上电/未接好（不是脚本问题）"
+      fi
     fi
   fi
   return 1
@@ -465,7 +483,7 @@ run_motor() {
 }
 
 run_calib() {
-  if ! ros2 node list 2>/dev/null | grep -qx '/power_sequence_node'; then
+  if ! timeout 15 ros2 node list --no-daemon 2>/dev/null | grep -qx '/power_sequence_node'; then
     echo "ERROR: /power_sequence_node 未运行，请先 ./main.sh start" >&2
     exit 1
   fi
